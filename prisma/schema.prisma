@@ -21,3 +21,62 @@ model User {
   password  String   
   createdAt DateTime @default(now()) 
 }
+
+enum TransportType {
+  RAIL
+  BUS
+  TRAM
+  OTHER
+}
+
+model Przystanek {
+  id          Int     @id @default(autoincrement()) @map("przystanek_id")
+  nazwa       String
+  latitude    Float?  
+  longitude   Float?
+  adres       String?
+  trasy       Trasa[]
+
+  @@map("Przystanek")
+}
+
+model Przewoznik {
+  id          Int      @id @default(autoincrement()) @map("przewoznik_id")
+  nazwa       String
+  typ         TransportType
+  kraj        String?
+  kontakt     String?
+  polaczenia  Polaczenie[]
+
+  @@map("Przewoznik")
+}
+
+model Polaczenie {
+  id            Int       @id @default(autoincrement()) @map("polaczenie_id")
+  przewoznikId  Int
+  nazwa         String?
+  typ           TransportType
+  przewoznik    Przewoznik @relation(fields: [przewoznikId], references: [id], onDelete: Cascade)
+  trasy         Trasa[]
+
+  @@unique([przewoznikId, nazwa])
+  @@map("Polaczenie")
+}
+
+model Trasa {
+  id           Int      @id @default(autoincrement()) @map("ppr_id")
+  polaczenieId Int
+  przystanekId Int
+  kolejnosc    Int
+  przyjazdDt   DateTime @map("przyjazd_dt")
+
+  polaczenie   Polaczenie @relation(fields: [polaczenieId], references: [id], onDelete: Cascade)
+  przystanek   Przystanek @relation(fields: [przystanekId], references: [id], onDelete: Cascade)
+
+  @@unique([polaczenieId, kolejnosc])
+  @@index([przystanekId])
+  @@index([polaczenieId])
+  @@map("Trasa")
+}
+
+
