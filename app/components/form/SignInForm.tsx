@@ -47,8 +47,11 @@ const SignInForm = () => {
     if(signInData?.error){
       console.log(signInData.error);
     } else {
-      router.refresh();
-      router.push('/admin');
+      // router.refresh();
+      // router.push('/admin');
+      
+      //Alternative (better)
+      window.location.href = '/admin';
     }
 
   };
