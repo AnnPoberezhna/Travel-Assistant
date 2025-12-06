@@ -20,6 +20,7 @@ model User {
   username  String   @unique 
   password  String   
   createdAt DateTime @default(now()) 
+  updatedAt DateTime @updatedAt
 }
 
 enum TransportType {
