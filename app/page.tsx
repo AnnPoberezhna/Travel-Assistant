@@ -8,11 +8,16 @@ export default async function Home () {
   const session = await getServerSession(authOptions)
 
   return(
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
       <h1 className='text-4xl'>Home</h1>
-      <Link className={buttonVariants()} href='/admin'>
-        Open Admin Page
-      </Link>
+      <div style={{ display: "flex", gap: 12 }}>
+        <Link className={buttonVariants()} href='/admin'>
+          Open Admin Page
+        </Link>
+        <Link className={buttonVariants()} href='/search'>
+          Open Search Page
+        </Link>
+      </div>
     
       {/* For Tracking the sessions */}
       

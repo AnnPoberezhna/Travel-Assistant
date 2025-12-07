@@ -80,4 +80,17 @@ model Trasa {
   @@map("Trasa")
 }
 
+model SearchHistory {
+  id           Int       @id @default(autoincrement())
+  userId       Int?      // optional: anonymous searches allowed
+  query        String
+  fromText     String?
+  toText       String?
+  resultsCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@map("SearchHistory")
+}
+
 
