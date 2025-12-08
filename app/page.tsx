@@ -11,12 +11,21 @@ export default async function Home () {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
       <h1 className='text-4xl'>Home</h1>
       <div style={{ display: "flex", gap: 12 }}>
-        <Link className={buttonVariants()} href='/admin'>
-          Open Admin Page
-        </Link>
-        <Link className={buttonVariants()} href='/search'>
-          Open Search Page
-        </Link>
+          <Link href="/admin" prefetch>
+            <button style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
+              Open Admin Page
+            </button>
+          </Link>
+          <Link href="/search" prefetch>
+            <button style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
+              Open Search Page
+            </button>
+          </Link>
+          <Link href="/history" prefetch>
+            <button style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
+              Open History Page
+            </button>
+          </Link>
       </div>
     
       {/* For Tracking the sessions */}

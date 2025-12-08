@@ -4,19 +4,45 @@ import { prisma } from "@/app/lib/db";
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const userIdStr = url.searchParams.get("userId");
+  const userEmail = url.searchParams.get("userEmail");
+  const username = url.searchParams.get("username");
   const limit = Number(url.searchParams.get("limit") ?? 20);
 
-  const where: any = {};
-  if (userIdStr) {
-    const userId = Number(userIdStr);
-    if (!Number.isNaN(userId)) where.userId = userId;
+  let userId = userIdStr ? Number(userIdStr) : NaN;
+  const lim = Math.max(1, Math.min(limit, 100));
+
+  // If userId not provided, try resolving by email or username
+  if (Number.isNaN(userId) && (userEmail || username)) {
+    try {
+      const where: any = {};
+      if (userEmail) where.email = userEmail;
+      if (username) where.username = username;
+      const u = await prisma.user.findFirst({ where });
+      if (u?.id) userId = Number(u.id);
+    } catch {
+      // ignore resolution errors
+    }
   }
 
-  const items = await prisma.searchHistory.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: Math.max(1, Math.min(limit, 100)),
-  });
+  // Deduplicate by (userId, fromText, toText) and take the latest createdAt
+  const items = await prisma.$queryRawUnsafe<any[]>(
+    `
+    SELECT DISTINCT ON (
+      COALESCE("userId", -1),
+      COALESCE("fromText", ''),
+      COALESCE("toText", '')
+    )
+      "id", "userId", "query", "fromText", "toText", "resultsCount", "createdAt"
+    FROM "SearchHistory"
+    ${!Number.isNaN(userId) ? `WHERE "userId" = ${userId}` : ``}
+    ORDER BY 
+      COALESCE("userId", -1),
+      COALESCE("fromText", ''),
+      COALESCE("toText", ''),
+      "createdAt" DESC
+    LIMIT ${lim}
+  `
+  );
 
   return NextResponse.json({ items });
 }
