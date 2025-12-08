@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import VoiceInput from "@/app/components/VoiceInput";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("wrocław -> katowice");
@@ -104,6 +105,19 @@ export default function SearchPage() {
   return (
     <div style={{ maxWidth: 800, margin: "40px auto", padding: 20 }}>
       <h1 style={{ fontSize: 32, marginBottom: 16 }}>Route Search</h1>
+      
+      <div style={{ marginBottom: 16, padding: 16, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8, color: "#64748b" }}>Voice Search</div>
+        <VoiceInput
+          onTranscript={(text) => console.log("Transcript:", text)}
+          onQuery={(parsedQuery) => {
+            setQuery(parsedQuery);
+            setTimeout(() => runSearch(), 100);
+          }}
+          placeholder="Say something like: Warszawa Gdynia"
+        />
+      </div>
+
       <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
         <input
           value={query}
