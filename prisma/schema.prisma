@@ -21,6 +21,7 @@ model User {
   password  String   
   createdAt DateTime @default(now()) 
   updatedAt DateTime @updatedAt
+  favoriteRoutes FavoriteRoutes[]
 }
 
 enum TransportType {
@@ -37,6 +38,8 @@ model Przystanek {
   longitude   Float?
   adres       String?
   trasy       Trasa[]
+  favoriteRoutes_start FavoriteRoutes[] @relation("PrzystanekStart")
+  favoriteRoutes_koniec FavoriteRoutes[] @relation("PrzystanekKoniec")
 
   @@map("Przystanek")
 }
@@ -78,6 +81,35 @@ model Trasa {
   @@index([przystanekId])
   @@index([polaczenieId])
   @@map("Trasa")
+}
+
+model SearchHistory {
+  id           Int       @id @default(autoincrement())
+  userId       Int?      // optional: anonymous searches allowed
+  query        String
+  fromText     String?
+  toText       String?
+  resultsCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@map("SearchHistory")
+}
+
+model FavoriteRoutes {
+  id                    Int        @id @default(autoincrement()) @map("ulubiona_trasa_id")
+  uzytkownikId          Int        @map("uzytkownik_id")
+  przystanekStartId     Int        @map("przystanek_start_id")
+  przystanekKoniecId    Int        @map("przystanek_koniec_id")
+  createdAt             DateTime   @default(now())
+
+  uzytkownik            User       @relation(fields: [uzytkownikId], references: [id], onDelete: Cascade)
+  przystanekStart       Przystanek @relation("PrzystanekStart", fields: [przystanekStartId], references: [id], onDelete: Cascade)
+  przystanekKoniec      Przystanek @relation("PrzystanekKoniec", fields: [przystanekKoniecId], references: [id], onDelete: Cascade)
+
+  @@unique([uzytkownikId, przystanekStartId, przystanekKoniecId])
+  @@index([uzytkownikId])
+  @@map("UlubioneTrasy")
 }
 
 
