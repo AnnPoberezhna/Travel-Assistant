@@ -10,6 +10,8 @@ export default function SearchPage() {
   const [fromId, setFromId] = useState<number | null>(null);
   const [toId, setToId] = useState<number | null>(null);
   const [pairRoutes, setPairRoutes] = useState<any[] | null>(null);
+  const [savingFav, setSavingFav] = useState(false);
+  const [favMessage, setFavMessage] = useState<string | null>(null);
 
   const runSearch = async () => {
     setLoading(true);
@@ -69,6 +71,36 @@ export default function SearchPage() {
     }
   };
 
+  const addToFavorites = async () => {
+    if (!fromId || !toId) {
+      setFavMessage("Please select both stops first");
+      return;
+    }
+    setSavingFav(true);
+    setFavMessage(null);
+    try {
+      const res = await fetch("/api/favoriteRoutes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          przystanekStartId: fromId,
+          przystanekKoniecId: toId,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setFavMessage("Added to favourites");
+      } else {
+        setFavMessage(json.error || "Failed to add to favourites");
+      }
+    } catch (e: any) {
+      setFavMessage(e.message || "Error saving favourite");
+    } finally {
+      setSavingFav(false);
+      setTimeout(() => setFavMessage(null), 3000);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 800, margin: "40px auto", padding: 20 }}>
       <h1 style={{ fontSize: 32, marginBottom: 16 }}>Route Search</h1>
@@ -115,15 +147,31 @@ export default function SearchPage() {
               ))}
             </select>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
             <button onClick={runDirectForPair} style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
               Find Direct Routes
+            </button>
+            <button 
+              onClick={addToFavorites} 
+              disabled={savingFav || !fromId || !toId}
+              style={{ 
+                padding: "10px 16px", 
+                borderRadius: 8, 
+                background: savingFav ? "#94a3b8" : "#10b981", 
+                color: "#fff", 
+                border: "none", 
+                cursor: savingFav || !fromId || !toId ? "not-allowed" : "pointer",
+                opacity: savingFav || !fromId || !toId ? 0.6 : 1
+              }}
+            >
+              {savingFav ? "Saving..." : "Add to Favourites"}
             </button>
           </div>
         </div>
       )}
       {loading && <div>Loading...</div>}
       {error && <div style={{ color: "#b91c1c" }}>Error: {error}</div>}
+      {favMessage && <div style={{ color: favMessage.startsWith("Added") ? "#10b981" : "#b91c1c", marginTop: 8, fontWeight: 500 }}>{favMessage}</div>}
       {resp && (
         <div style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 8 }}>

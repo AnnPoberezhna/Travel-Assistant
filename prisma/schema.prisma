@@ -21,7 +21,7 @@ model User {
   password  String   
   createdAt DateTime @default(now()) 
   updatedAt DateTime @updatedAt
-  ulubioneTrasy UlubioneTrasy[]
+  favoriteRoutes FavoriteRoutes[]
 }
 
 enum TransportType {
@@ -38,8 +38,8 @@ model Przystanek {
   longitude   Float?
   adres       String?
   trasy       Trasa[]
-  ulubioneTrasy_start UlubioneTrasy[] @relation("PrzystanekStart")
-  ulubioneTrasy_koniec UlubioneTrasy[] @relation("PrzystanekKoniec")
+  favoriteRoutes_start FavoriteRoutes[] @relation("PrzystanekStart")
+  favoriteRoutes_koniec FavoriteRoutes[] @relation("PrzystanekKoniec")
 
   @@map("Przystanek")
 }
@@ -96,7 +96,7 @@ model SearchHistory {
   @@map("SearchHistory")
 }
 
-model UlubioneTrasy {
+model FavoriteRoutes {
   id                    Int        @id @default(autoincrement()) @map("ulubiona_trasa_id")
   uzytkownikId          Int        @map("uzytkownik_id")
   przystanekStartId     Int        @map("przystanek_start_id")
