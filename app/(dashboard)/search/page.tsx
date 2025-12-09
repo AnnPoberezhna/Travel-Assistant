@@ -13,6 +13,8 @@ export default function SearchPage() {
   const [pairRoutes, setPairRoutes] = useState<any[] | null>(null);
   const [savingFav, setSavingFav] = useState(false);
   const [favMessage, setFavMessage] = useState<string | null>(null);
+  const [withTransfer, setWithTransfer] = useState(false);
+  const [ignoreTime, setIgnoreTime] = useState(false);
 
   const runSearch = async () => {
     setLoading(true);
@@ -49,12 +51,17 @@ export default function SearchPage() {
     setError(null);
     setPairRoutes(null);
     try {
-      // Prefer dedicated direct search API if available
-      const res = await fetch(`/api/routeSearch/find?fromId=${fromId}&toId=${toId}`);
+      // Prefer dedicated search API (supports transfers & time options)
+      const params = new URLSearchParams();
+      params.set("startId", String(fromId));
+      params.set("endId", String(toId));
+      if (withTransfer) params.set("transfers", "1");
+      if (ignoreTime) params.set("ignoreTime", "1");
+      const res = await fetch(`/api/routeSearch/find?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        // expect { routes: [...] }
-        setPairRoutes(Array.isArray(json.routes) ? json.routes : []);
+        // expect { results: [...] }
+        setPairRoutes(Array.isArray(json.results) ? json.results : []);
       } else {
         // fallback: re-run parse with direct and filter selected pair
         const params = new URLSearchParams();
@@ -129,6 +136,14 @@ export default function SearchPage() {
           <input type="checkbox" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
           Direct only
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={withTransfer} onChange={(e) => setWithTransfer(e.target.checked)} />
+          With transfer
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={ignoreTime} onChange={(e) => setIgnoreTime(e.target.checked)} />
+          Ignore time
+        </label>
         <button onClick={runSearch} style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
           Search
         </button>
@@ -163,7 +178,7 @@ export default function SearchPage() {
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
             <button onClick={runDirectForPair} style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
-              Find Direct Routes
+              {withTransfer ? "Find Routes (1 transfer)" : "Find Direct Routes"}
             </button>
             <button 
               onClick={addToFavorites} 
@@ -223,14 +238,22 @@ export default function SearchPage() {
           )}
           {Array.isArray(pairRoutes) && (
             <div style={{ marginTop: 16 }}>
-              <h3>Selected Pair Routes</h3>
+              <h3>{withTransfer ? "Found Routes (one transfer)" : "Selected Pair Routes"}</h3>
               {pairRoutes.length === 0 ? (
-                <div>No direct routes found for selected pair.</div>
+                <div>No routes found for selected options.</div>
               ) : (
                 <ul>
                   {pairRoutes.map((r: any, idx: number) => (
                     <li key={`r-${idx}`}>
-                      {r?.polaczenieNazwa ?? "Route"} — stop count: {r?.stopCount ?? (Array.isArray(r?.stops) ? r.stops.length : "-")}
+                      {withTransfer ? (
+                        <span>
+                          {r.firstPrzewoznikName} [{r.firstPolaczenieId}] from #{r.startStopId} → transfer at #{r.transferStopId} at {new Date(r.transferTime).toLocaleTimeString()} → {r.secondPrzewoznikName} [{r.secondPolaczenieId}] to #{r.endStopId} by {new Date(r.endTime).toLocaleTimeString()}
+                        </span>
+                      ) : (
+                        <span>
+                          {r.przewoznikName} [{r.polaczenieId}] from #{r.startStopId} at {new Date(r.startTime).toLocaleTimeString()} → #{r.endStopId} at {new Date(r.endTime).toLocaleTimeString()}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
