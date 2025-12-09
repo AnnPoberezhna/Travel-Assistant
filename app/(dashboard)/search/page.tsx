@@ -112,7 +112,27 @@ export default function SearchPage() {
           onTranscript={(text) => console.log("Transcript:", text)}
           onQuery={(parsedQuery) => {
             setQuery(parsedQuery);
-            setTimeout(() => runSearch(), 100);
+            // Automatically trigger search after voice input
+            setLoading(true);
+            setError(null);
+            setResp(null);
+            setPairRoutes(null);
+            const params = new URLSearchParams();
+            params.set("q", parsedQuery);
+            if (direct) params.set("direct", "1");
+            fetch(`/api/routeSearch/parse?${params.toString()}`)
+              .then((res) => res.json())
+              .then((json) => {
+                setResp(json);
+                if (!fromId && Array.isArray(json.fromCandidates) && json.fromCandidates.length) {
+                  setFromId(Number(json.fromCandidates[0].id));
+                }
+                if (!toId && Array.isArray(json.toCandidates) && json.toCandidates.length) {
+                  setToId(Number(json.toCandidates[0].id));
+                }
+              })
+              .catch((e: any) => setError(String(e?.message ?? e)))
+              .finally(() => setLoading(false));
           }}
           placeholder="Say something like: Warszawa Gdynia"
         />

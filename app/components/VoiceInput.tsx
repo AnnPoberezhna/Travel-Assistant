@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 interface VoiceInputProps {
   onTranscript: (text: string) => void;
@@ -12,6 +12,36 @@ export default function VoiceInput({ onTranscript, onQuery, placeholder = "Click
   const [transcript, setTranscript] = useState("");
   const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<any>(null);
+
+  const processVoiceCommand = useCallback((text: string): string | null => {
+    const lowerText = text.toLowerCase();
+    
+    // Parse voice command to database query format
+    // Examples: "warszawa gdynia", "kraków katowice"
+    const patterns = [
+      /([a-ząćęłńóśźż]+)\s+([a-ząćęłńóśźż]+)/i,  // "Warszawa Gdynia"
+      /([a-ząćęłńóśźż]+)\s+->\s+([a-ząćęłńóśźż]+)/i,  // "Warszawa -> Gdynia"
+    ];
+
+    let from = "";
+    let to = "";
+
+    for (const pattern of patterns) {
+      const match = lowerText.match(pattern);
+      if (match) {
+        from = match[1].trim();
+        to = match[2].trim();
+        break;
+      }
+    }
+
+    if (from && to) {
+      const query = `${from} -> ${to}`;
+      return query;
+    }
+    
+    return null;
+  }, []);
 
   useEffect(() => {
     // Check if Web Speech API is supported
@@ -42,8 +72,13 @@ export default function VoiceInput({ onTranscript, onQuery, placeholder = "Click
         setTranscript(currentTranscript);
         
         if (finalTranscript) {
+          const processedQuery = processVoiceCommand(finalTranscript);
           onTranscript(finalTranscript);
-          processVoiceCommand(finalTranscript);
+          
+          // Automatically trigger search if query was processed successfully
+          if (processedQuery && onQuery) {
+            onQuery(processedQuery);
+          }
         }
       };
 
@@ -62,37 +97,7 @@ export default function VoiceInput({ onTranscript, onQuery, placeholder = "Click
         recognitionRef.current.stop();
       }
     };
-  }, [onTranscript]);
-
-  const processVoiceCommand = (text: string) => {
-    const lowerText = text.toLowerCase();
-    
-    // Parse voice command to database query format
-    // Examples: "warszawa gdynia", "kraków katowice"
-    const patterns = [
-      /([a-ząćęłńóśźż]+)\s+([a-ząćęłńóśźż]+)/i,  // "Warszawa Gdynia"
-      /([a-ząćęłńóśźż]+)\s+->\s+([a-ząćęłńóśźż]+)/i,  // "Warszawa -> Gdynia"
-    ];
-
-    let from = "";
-    let to = "";
-
-    for (const pattern of patterns) {
-      const match = lowerText.match(pattern);
-      if (match) {
-        from = match[1].trim();
-        to = match[2].trim();
-        break;
-      }
-    }
-
-    if (from && to) {
-      const query = `${from} -> ${to}`;
-      if (onQuery) {
-        onQuery(query);
-      }
-    }
-  };
+  }, [onTranscript, onQuery, processVoiceCommand]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) return;
