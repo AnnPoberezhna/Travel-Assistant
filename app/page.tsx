@@ -1,39 +1,287 @@
-import Link from 'next/link'; 
-import { buttonVariants } from "./components/ui/button";
-import User from './components/User';
-import { getServerSession } from 'next-auth';
-import { authOptions } from './lib/auth';
+"use client";
+import { useEffect, useState } from "react";
+import VoiceInput from "@/app/components/VoiceInput";
 
-export default async function Home () {
-  const session = await getServerSession(authOptions)
+export default function Home() {
+  const [query, setQuery] = useState("wrocław -> katowice");
+  const [direct, setDirect] = useState(true);
+  const [resp, setResp] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fromId, setFromId] = useState<number | null>(null);
+  const [toId, setToId] = useState<number | null>(null);
+  const [pairRoutes, setPairRoutes] = useState<any[] | null>(null);
+  const [savingFav, setSavingFav] = useState(false);
+  const [favMessage, setFavMessage] = useState<string | null>(null);
+  const [withTransfer, setWithTransfer] = useState(false);
+  const [ignoreTime, setIgnoreTime] = useState(false);
 
-  return(
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <h1 className='text-4xl'>Home</h1>
-      <div style={{ display: "flex", gap: 12 }}>
-          <Link href="/admin" prefetch>
-            <button style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
-              Open Admin Page
-            </button>
-          </Link>
-          <Link href="/search" prefetch>
-            <button style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
-              Open Search Page
-            </button>
-          </Link>
-          <Link href="/history" prefetch>
-            <button style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
-              Open History Page
-            </button>
-          </Link>
-      </div>
-    
-      {/* For Tracking the sessions */}
+  const runSearch = async () => {
+    setLoading(true);
+    setError(null);
+    setResp(null);
+    setPairRoutes(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("q", query);
+      if (direct) params.set("direct", "1");
+      const res = await fetch(`/api/routeSearch/parse?${params.toString()}`);
+      const json = await res.json();
+      setResp(json);
+      // preset selects with first candidates if not chosen
+      if (!fromId && Array.isArray(json.fromCandidates) && json.fromCandidates.length) {
+        setFromId(Number(json.fromCandidates[0].id));
+      }
+      if (!toId && Array.isArray(json.toCandidates) && json.toCandidates.length) {
+        setToId(Number(json.toCandidates[0].id));
+      }
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runDirectForPair = async () => {
+    if (!fromId || !toId) {
+      setError("Please select both From and To stops");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setPairRoutes(null);
+    try {
+      // Prefer dedicated search API (supports transfers & time options)
+      const params = new URLSearchParams();
+      params.set("startId", String(fromId));
+      params.set("endId", String(toId));
+      if (withTransfer) params.set("transfers", "1");
+      if (ignoreTime) params.set("ignoreTime", "1");
+      const res = await fetch(`/api/routeSearch/find?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        // expect { results: [...] }
+        setPairRoutes(Array.isArray(json.results) ? json.results : []);
+      } else {
+        // fallback: re-run parse with direct and filter selected pair
+        const params = new URLSearchParams();
+        params.set("q", query);
+        params.set("direct", "1");
+        const res2 = await fetch(`/api/routeSearch/parse?${params.toString()}`);
+        const json2 = await res2.json();
+        const match = (json2.directPairs ?? []).find((p: any) => Number(p.fromId) === fromId && Number(p.toId) === toId);
+        setPairRoutes(match ? (Array.isArray(match.routes) ? match.routes : []) : []);
+      }
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addToFavorites = async () => {
+    if (!fromId || !toId) {
+      setFavMessage("Please select both stops first");
+      return;
+    }
+    setSavingFav(true);
+    setFavMessage(null);
+    try {
+      const res = await fetch("/api/favoriteRoutes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          przystanekStartId: fromId,
+          przystanekKoniecId: toId,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setFavMessage("Added to favourites");
+      } else {
+        setFavMessage(json.error || "Failed to add to favourites");
+      }
+    } catch (e: any) {
+      setFavMessage(e.message || "Error saving favourite");
+    } finally {
+      setSavingFav(false);
+      setTimeout(() => setFavMessage(null), 3000);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 800, margin: "40px auto", padding: 20 }}>
+      <h1 style={{ fontSize: 32, marginBottom: 16 }}>Route Search</h1>
       
-      {/* <h2>Client Session</h2>
-      <User />
-      <h2>Server Session</h2>
-      {JSON.stringify(session)} */}
+      <div style={{ marginBottom: 16, padding: 16, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8, color: "#64748b" }}>Voice Search</div>
+        <VoiceInput
+          onTranscript={(text) => console.log("Transcript:", text)}
+          onQuery={(parsedQuery) => {
+            setQuery(parsedQuery);
+            // Automatically trigger search after voice input
+            setLoading(true);
+            setError(null);
+            setResp(null);
+            setPairRoutes(null);
+            const params = new URLSearchParams();
+            params.set("q", parsedQuery);
+            if (direct) params.set("direct", "1");
+            fetch(`/api/routeSearch/parse?${params.toString()}`)
+              .then((res) => res.json())
+              .then((json) => {
+                setResp(json);
+                if (!fromId && Array.isArray(json.fromCandidates) && json.fromCandidates.length) {
+                  setFromId(Number(json.fromCandidates[0].id));
+                }
+                if (!toId && Array.isArray(json.toCandidates) && json.toCandidates.length) {
+                  setToId(Number(json.toCandidates[0].id));
+                }
+              })
+              .catch((e: any) => setError(String(e?.message ?? e)))
+              .finally(() => setLoading(false));
+          }}
+          placeholder="Say something like: Warszawa Gdynia"
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Type e.g. wrocław -> katowice"
+          style={{ flex: 1, padding: "10px 12px", border: "1px solid #ddd", borderRadius: 8 }}
+        />
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
+          Direct only
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={withTransfer} onChange={(e) => setWithTransfer(e.target.checked)} />
+          With transfer
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={ignoreTime} onChange={(e) => setIgnoreTime(e.target.checked)} />
+          Ignore time
+        </label>
+        <button onClick={runSearch} style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
+          Search
+        </button>
+      </div>
+      {resp && (
+        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+            <label><strong>From</strong></label>
+            <select
+              value={fromId ?? ""}
+              onChange={(e) => setFromId(Number(e.target.value))}
+              style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8 }}
+            >
+              <option value="" disabled>Select stop</option>
+              {(resp.fromCandidates ?? []).map((c: any) => (
+                <option key={`f-${c.id}`} value={c.id}>{c.nazwa}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+            <label><strong>To</strong></label>
+            <select
+              value={toId ?? ""}
+              onChange={(e) => setToId(Number(e.target.value))}
+              style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8 }}
+            >
+              <option value="" disabled>Select stop</option>
+              {(resp.toCandidates ?? []).map((c: any) => (
+                <option key={`t-${c.id}`} value={c.id}>{c.nazwa}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+            <button onClick={runDirectForPair} style={{ padding: "10px 16px", borderRadius: 8, background: "#0f172a", color: "#fff", border: "none", cursor: "pointer" }}>
+              {withTransfer ? "Find Routes (1 transfer)" : "Find Direct Routes"}
+            </button>
+            <button 
+              onClick={addToFavorites} 
+              disabled={savingFav || !fromId || !toId}
+              style={{ 
+                padding: "10px 16px", 
+                borderRadius: 8, 
+                background: savingFav ? "#94a3b8" : "#10b981", 
+                color: "#fff", 
+                border: "none", 
+                cursor: savingFav || !fromId || !toId ? "not-allowed" : "pointer",
+                opacity: savingFav || !fromId || !toId ? 0.6 : 1
+              }}
+            >
+              {savingFav ? "Saving..." : "Add to Favourites"}
+            </button>
+          </div>
+        </div>
+      )}
+      {loading && <div>Loading...</div>}
+      {error && <div style={{ color: "#b91c1c" }}>Error: {error}</div>}
+      {favMessage && <div style={{ color: favMessage.startsWith("Added") ? "#10b981" : "#b91c1c", marginTop: 8, fontWeight: 500 }}>{favMessage}</div>}
+      {resp && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Query:</strong> {resp.query}
+          </div>
+          <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ flex: 1 }}>
+              <h3>From Candidates</h3>
+              <ul>
+                {(resp.fromCandidates ?? []).map((c: any) => (
+                  <li key={`f-${c.id}`}>{c.nazwa}</li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ flex: 1 }}>
+              <h3>To Candidates</h3>
+              <ul>
+                {(resp.toCandidates ?? []).map((c: any) => (
+                  <li key={`t-${c.id}`}>{c.nazwa}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          {Array.isArray(resp.directPairs) && (
+            <div style={{ marginTop: 16 }}>
+              <h3>Direct Pairs</h3>
+              <ul>
+                {resp.directPairs.map((p: any, idx: number) => (
+                  <li key={`pair-${idx}`}>
+                    {p.fromName} → {p.toName} ({Array.isArray(p.routes) ? p.routes.length : 0} routes)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {Array.isArray(pairRoutes) && (
+            <div style={{ marginTop: 16 }}>
+              <h3>{withTransfer ? "Found Routes (one transfer)" : "Selected Pair Routes"}</h3>
+              {pairRoutes.length === 0 ? (
+                <div>No routes found for selected options.</div>
+              ) : (
+                <ul>
+                  {pairRoutes.map((r: any, idx: number) => (
+                    <li key={`r-${idx}`}>
+                      {withTransfer ? (
+                        <span>
+                          {r.firstPrzewoznikName} [{r.firstPolaczenieId}] from #{r.startStopId} → transfer at #{r.transferStopId} at {new Date(r.transferTime).toLocaleTimeString()} → {r.secondPrzewoznikName} [{r.secondPolaczenieId}] to #{r.endStopId} by {new Date(r.endTime).toLocaleTimeString()}
+                        </span>
+                      ) : (
+                        <span>
+                          {r.przewoznikName} [{r.polaczenieId}] from #{r.startStopId} at {new Date(r.startTime).toLocaleTimeString()} → #{r.endStopId} at {new Date(r.endTime).toLocaleTimeString()}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
