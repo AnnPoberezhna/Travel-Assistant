@@ -57,6 +57,21 @@ const UserAccountnav = () => {
                     }}
                 >
                     <Link
+                        href="/profile"
+                        onClick={() => setIsOpen(false)}
+                        style={{
+                            display: "block",
+                            padding: "12px 16px",
+                            textDecoration: "none",
+                            color: "#0f172a",
+                            borderBottom: "1px solid #e2e8f0",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                    >
+                        My Profile
+                    </Link>
+                    <Link
                         href="/favorites"
                         onClick={() => setIsOpen(false)}
                         style={{

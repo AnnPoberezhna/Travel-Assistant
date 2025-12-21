@@ -54,9 +54,25 @@ export const authOptions: NextAuthOptions = {
             if(user){
                 return {
                     ...token,
-                    username: user.username
+                    username: user.username,
+                    id: user.id
                 }
             }
+            
+            // Fetch updated user data on subsequent requests
+            if (token.email) {
+                const dbUser = await db.user.findUnique({
+                    where: { email: token.email as string },
+                    select: { id: true, username: true, email: true, role: true }
+                });
+                
+                if (dbUser) {
+                    token.username = dbUser.username;
+                    token.id = dbUser.id.toString();
+                    token.role = dbUser.role;
+                }
+            }
+            
             return token
         },
 
@@ -65,7 +81,9 @@ export const authOptions: NextAuthOptions = {
                 ...session,
                 user: {
                     ...session.user,
-                    username: token.username
+                    username: token.username,
+                    id: token.id,
+                    role: token.role
                 }
             }
         },
