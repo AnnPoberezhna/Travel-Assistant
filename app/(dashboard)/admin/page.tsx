@@ -52,7 +52,6 @@ export default function AdminPage() {
   };
 
   const adminCount = users.filter(u => u.role === "ADMIN").length;
-  const userCount = users.filter(u => u.role === "USER").length;
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: "linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%)", position: "relative", paddingBottom: "80px" }}>
@@ -107,14 +106,6 @@ export default function AdminPage() {
               <div style={{ fontSize: 14, fontWeight: 600, color: "#90caf9", textTransform: "uppercase", letterSpacing: "1px" }}>Total Users</div>
             </div>
             <div style={{ fontSize: 36, fontWeight: 900, color: "#fff" }}>{users.length}</div>
-          </div>
-
-          <div style={{ background: "linear-gradient(135deg, rgba(102, 187, 106, 0.15) 0%, rgba(102, 187, 106, 0.05) 100%)", border: "2px solid rgba(102, 187, 106, 0.3)", borderRadius: 16, padding: 24, backdropFilter: "blur(10px)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-              <User size={32} color="#66bb6a" />
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#a5d6a7", textTransform: "uppercase", letterSpacing: "1px" }}>Regular Users</div>
-            </div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: "#fff" }}>{userCount}</div>
           </div>
 
           <div style={{ background: "linear-gradient(135deg, rgba(255, 213, 79, 0.15) 0%, rgba(255, 213, 79, 0.05) 100%)", border: "2px solid rgba(255, 213, 79, 0.3)", borderRadius: 16, padding: 24, backdropFilter: "blur(10px)" }}>
