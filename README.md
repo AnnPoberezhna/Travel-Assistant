@@ -86,6 +86,43 @@ Seed the database (optional):
 npx prisma db seed
 ```
 
+### 4b. Import Real Transportation Data 🚀
+
+You have 2 options to populate the database:
+
+#### Option 1: Real GTFS Data from Warsaw (RECOMMENDED ⭐)
+
+Import **real transportation data** from ZTM Warsaw open data:
+
+```bash
+npm run import:gtfs
+```
+
+**What you get:**
+- ✅ 500 real stops from Warsaw
+- ✅ 1 real operator (ZTM Warszawa)
+- ✅ 100 real bus/tram/metro lines
+- ✅ 50 trips with actual schedules
+- ✅ Free and updated daily
+
+**Data source:** https://mkuran.pl/gtfs/warsaw.zip (94MB)
+
+**Note:** Import takes ~3 minutes. The script automatically limits data to keep database manageable.
+
+#### Option 2: Realistic Generated Data (Fallback)
+
+If GTFS import fails or you want faster setup:
+
+```bash
+npm run import:gtfs:fallback
+```
+
+**What you get:**
+- 19 stops (Wrocław, Kraków, Warszawa, Poznań, Gdańsk, Katowice, Opole)
+- 7 operators (PKP InterCity, FlixBus, MPK, etc.)
+- 12 connections with realistic schedules
+- Instant import (~1 second)
+
 ### 5. Run Development Server
 
 ```bash

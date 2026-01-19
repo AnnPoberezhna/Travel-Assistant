@@ -323,18 +323,18 @@ export default function Home() {
                           </div>
                           <div style={{ marginLeft: 32, fontSize: 15, color: "#f57f17", lineHeight: 1.8 }}>
                             <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                              🚆 First Leg: {r.firstPrzewoznikName} [Connection #{r.firstPolaczenieId}]
+                              🚆 First Leg: {r.firstPrzewoznikName} [{r.firstPolaczenieNazwa}]
                             </div>
                             <div style={{ marginLeft: 16, marginBottom: 12 }}>
-                              From Stop #{r.startStopId} → Transfer at Stop #{r.transferStopId}
+                              From {r.startStopName} → Transfer at {r.transferStopName}
                               <br />
                               Transfer Time: {new Date(r.transferTime).toLocaleTimeString()}
                             </div>
                             <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                              🚆 Second Leg: {r.secondPrzewoznikName} [Connection #{r.secondPolaczenieId}]
+                              🚆 Second Leg: {r.secondPrzewoznikName} [{r.secondPolaczenieNazwa}]
                             </div>
                             <div style={{ marginLeft: 16 }}>
-                              From Stop #{r.transferStopId} → To Stop #{r.endStopId}
+                              From {r.transferStopName} → To {r.endStopName}
                               <br />
                               Arrival Time: {new Date(r.endTime).toLocaleTimeString()}
                             </div>
@@ -348,13 +348,13 @@ export default function Home() {
                           </div>
                           <div style={{ marginLeft: 32, fontSize: 15, color: "#f57f17", lineHeight: 1.8 }}>
                             <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                              Connection #{r.polaczenieId}
+                              {r.polaczenieNazwa}
                             </div>
                             <div>
-                              🚏 Departure: Stop #{r.startStopId} at {new Date(r.startTime).toLocaleTimeString()}
+                              🚏 Departure: {r.startStopName} at {new Date(r.startTime).toLocaleTimeString()}
                             </div>
                             <div>
-                              🚏 Arrival: Stop #{r.endStopId} at {new Date(r.endTime).toLocaleTimeString()}
+                              🚏 Arrival: {r.endStopName} at {new Date(r.endTime).toLocaleTimeString()}
                             </div>
                           </div>
                         </div>
