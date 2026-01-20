@@ -99,15 +99,17 @@ npm run import:gtfs
 ```
 
 **What you get:**
-- ✅ 500 real stops from Warsaw
-- ✅ 1 real operator (ZTM Warszawa)
-- ✅ 100 real bus/tram/metro lines
-- ✅ 50 trips with actual schedules
-- ✅ Free and updated daily
+- 500 real stops from Warsaw
+- 1 real operator (ZTM Warszawa)
+- 100 real bus/tram/metro lines
+- 50 trips with actual schedules
+- Free and updated daily
 
 **Data source:** https://mkuran.pl/gtfs/warsaw.zip (94MB)
 
 **Note:** Import takes ~3 minutes. The script automatically limits data to keep database manageable.
+
+**Important:** When searching routes with GTFS or seed data, enable the **"Ignore time"** checkbox for best results, as imported schedules may be outdated.
 
 #### Option 2: Realistic Generated Data (Fallback)
 
@@ -122,6 +124,8 @@ npm run import:gtfs:fallback
 - 7 operators (PKP InterCity, FlixBus, MPK, etc.)
 - 12 connections with realistic schedules
 - Instant import (~1 second)
+
+**⚠️ Important:** When searching routes with generated data, enable the **"Ignore time"** checkbox for best results, as schedules are sample data.
 
 ### 5. Run Development Server
 
@@ -237,6 +241,22 @@ npx prisma studio
 npm run build
 npm run start
 ```
+
+## Application Screens
+
+- **Home Page** (`/`) - Main search interface. Enter query as "from -> to" or use voice input. View direct and transfer routes with times and operator info. Save favorite routes.
+
+- **Sign In** (`/auth/sign-in`) - User login with email and password. Creates JWT session for dashboard access.
+
+- **Sign Up** (`/auth/sign-up`) - Account registration with email, username, and password validation. Auto-redirects to sign in after successful registration.
+
+- **Search History** (`/history`) - View all previous searches with timestamps. 
+
+- **Favorite Routes** (`/favorites`) - Saved routes with details and quick actions. Re-run, remove, or view route information for commute optimization.
+
+- **Profile** (`/profile`) - User account settings with username, email and role display. Edit profile email and mail or change password with current password verification and bcrypt re-hashing.
+
+- **Admin Dashboard** (`/admin`) - User management panel (admin only). List all users, view roles and manage accounts.
 
 ## License
 
