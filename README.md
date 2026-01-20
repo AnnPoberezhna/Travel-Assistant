@@ -125,7 +125,7 @@ npm run import:gtfs:fallback
 - 12 connections with realistic schedules
 - Instant import (~1 second)
 
-**⚠️ Important:** When searching routes with generated data, enable the **"Ignore time"** checkbox for best results, as schedules are sample data.
+**Important:** When searching routes with generated data, enable the **"Ignore time"** checkbox for best results, as schedules are sample data.
 
 ### 5. Run Development Server
 
