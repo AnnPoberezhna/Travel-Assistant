@@ -86,11 +86,11 @@ Seed the database (optional):
 npx prisma db seed
 ```
 
-### 4b. Import Real Transportation Data 🚀
+### 4b. Import Real Transportation Data 
 
 You have 2 options to populate the database:
 
-#### Option 1: Real GTFS Data from Warsaw (RECOMMENDED ⭐)
+#### Option 1: Real GTFS Data from Warsaw (RECOMMENDED)
 
 Import **real transportation data** from ZTM Warsaw open data:
 
