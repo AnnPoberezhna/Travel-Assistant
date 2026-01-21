@@ -135,7 +135,7 @@ export default function SearchPage() {
         params.set("startId", String(fromIdNum));
         params.set("endId", String(toIdNum));
         if (withTransfer) params.set("transfers", "1");
-        if (ignoreTime) params.set("ignoreTime", "1");
+        params.set("ignoreTime", "1"); // Always ignore time for URL-based searches
         
         fetch(`/api/routeSearch/find?${params.toString()}`)
           .then((res) => {
