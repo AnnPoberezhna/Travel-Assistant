@@ -3,14 +3,17 @@ import { prisma } from "@/app/lib/db";
 
 type DirectConnectionResult = {
   polaczenieId: number;
+  polaczenieNazwa: string;
   startStopId: number;
+  startStopName: string;
   endStopId: number;
+  endStopName: string;
   startTime: Date;
   endTime: Date;
   przewoznikName: string;
 };
 
-// Lightweight local types matching the selected payloads from Prisma
+
 type StartLeg = {
   polaczenieId: number;
   przystanekId: number;
@@ -90,14 +93,53 @@ export async function findDirectConnections(
       if (s.kolejnosc < e.kolejnosc) {
         results.push({
           polaczenieId: s.polaczenieId,
+          polaczenieNazwa: '',
           startStopId,
+          startStopName: '',
           endStopId,
+          endStopName: '',
           startTime: s.przyjazdDt,
           endTime: e.przyjazdDt,
           przewoznikName: s.polaczenie.przewoznik.nazwa,
         });
       }
     }
+  }
+
+  // Fetch stop names for all stops in results
+  const allStopIds = new Set<number>();
+  for (const r of results) {
+    allStopIds.add(r.startStopId);
+    allStopIds.add(r.endStopId);
+  }
+  const stopNames = new Map<number, string>();
+  if (allStopIds.size > 0) {
+    const stops = await (prisma as any).przystanek.findMany({
+      where: { id: { in: Array.from(allStopIds) } },
+      select: { id: true, nazwa: true },
+    });
+    for (const s of stops) {
+      stopNames.set(s.id, s.nazwa);
+    }
+  }
+
+  // Fetch connection names
+  const connNames = new Map<number, string>();
+  if (polaczenieIds.length > 0) {
+    const conns = await (prisma as any).polaczenie.findMany({
+      where: { id: { in: polaczenieIds } },
+      select: { id: true, nazwa: true },
+    });
+    for (const c of conns) {
+      connNames.set(c.id, c.nazwa || `Connection ${c.id}`);
+    }
+  }
+
+  // Enrich results with names
+  for (const r of results) {
+    r.startStopName = stopNames.get(r.startStopId) || `Stop ${r.startStopId}`;
+    r.endStopName = stopNames.get(r.endStopId) || `Stop ${r.endStopId}`;
+    r.polaczenieNazwa = connNames.get(r.polaczenieId) || `Connection ${r.polaczenieId}`;
   }
 
   // sortujemy po czasie startu,
@@ -108,10 +150,15 @@ export async function findDirectConnections(
 
 type OneTransferResult = {
   firstPolaczenieId: number;
+  firstPolaczenieNazwa: string;
   secondPolaczenieId: number;
+  secondPolaczenieNazwa: string;
   startStopId: number;
+  startStopName: string;
   transferStopId: number;
+  transferStopName: string;
   endStopId: number;
+  endStopName: string;
   firstStartTime: Date;
   transferTime: Date;
   endTime: Date;
@@ -201,10 +248,15 @@ export async function findOneTransferConnections(
           if (secStart.kolejnosc < secEnd.kolejnosc) {
             results.push({
               firstPolaczenieId: s.polaczenieId,
+              firstPolaczenieNazwa: '',
               secondPolaczenieId: secStart.polaczenieId,
+              secondPolaczenieNazwa: '',
               startStopId,
+              startStopName: '',
               transferStopId: transfer.przystanekId,
+              transferStopName: '',
               endStopId,
+              endStopName: '',
               firstStartTime: s.przyjazdDt,
               transferTime: transfer.przyjazdDt,
               endTime: secEnd.przyjazdDt,
@@ -215,6 +267,48 @@ export async function findOneTransferConnections(
         }
       }
     }
+  }
+
+  // Fetch stop and connection names for enrichment
+  const allStopIds = new Set<number>();
+  const allConnIds = new Set<number>();
+  for (const r of results) {
+    allStopIds.add(r.startStopId);
+    allStopIds.add(r.transferStopId);
+    allStopIds.add(r.endStopId);
+    allConnIds.add(r.firstPolaczenieId);
+    allConnIds.add(r.secondPolaczenieId);
+  }
+
+  const stopNames = new Map<number, string>();
+  if (allStopIds.size > 0) {
+    const stops = await (prisma as any).przystanek.findMany({
+      where: { id: { in: Array.from(allStopIds) } },
+      select: { id: true, nazwa: true },
+    });
+    for (const s of stops) {
+      stopNames.set(s.id, s.nazwa);
+    }
+  }
+
+  const connNames = new Map<number, string>();
+  if (allConnIds.size > 0) {
+    const conns = await (prisma as any).polaczenie.findMany({
+      where: { id: { in: Array.from(allConnIds) } },
+      select: { id: true, nazwa: true },
+    });
+    for (const c of conns) {
+      connNames.set(c.id, c.nazwa || `Connection ${c.id}`);
+    }
+  }
+
+  // Enrich results with names
+  for (const r of results) {
+    r.startStopName = stopNames.get(r.startStopId) || `Stop ${r.startStopId}`;
+    r.transferStopName = stopNames.get(r.transferStopId) || `Stop ${r.transferStopId}`;
+    r.endStopName = stopNames.get(r.endStopId) || `Stop ${r.endStopId}`;
+    r.firstPolaczenieNazwa = connNames.get(r.firstPolaczenieId) || `Connection ${r.firstPolaczenieId}`;
+    r.secondPolaczenieNazwa = connNames.get(r.secondPolaczenieId) || `Connection ${r.secondPolaczenieId}`;
   }
 
   results.sort((a, b) => a.firstStartTime.getTime() - b.firstStartTime.getTime());
