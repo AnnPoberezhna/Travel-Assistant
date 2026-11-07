@@ -7,6 +7,7 @@ This project is a web-based application designed to provide users with an intuit
 - **Voice Input**: Search for routes using voice commands with Web Speech API
 - **Smart Route Search**: Find direct and connecting routes between stops
 - **Favorite Routes**: Save frequently used routes for quick access
+- **Live Map**: Leaflet map with stops and live Warsaw bus and tram positions; pick a start and destination stop to plan a route
 - **Search History**: Track your previous searches
 - **User Authentication**: Secure sign-up/sign-in with NextAuth.js
 - **Admin Dashboard**: User management and system administration
@@ -217,6 +218,10 @@ The app uses NextAuth.js with credential-based authentication:
 ### Public Routes
 - `POST /api/auth/signin` - User login
 - `POST /api/auth/signup` - User registration
+- `GET /api/stops` - Stops with coordinates, used by the map
+  - Optional `bbox=minLon,minLat,maxLon,maxLat` (only stops inside this area) and `limit` (default 1000, max 5000)
+  - Returns `truncated: true` when more stops match than the limit
+- `GET /api/stops/reachable?from=ID` - Ids of stops reachable from a stop by a direct connection (used by the map to highlight possible destinations)
 
 ### Warsaw Live Data (api.um.warszawa.pl)
 Require `WARSAW_API_KEY` in `.env`. Responses are cached on the server for a short time.
@@ -270,6 +275,8 @@ npm run start
 ## Application Screens
 
 - **Home Page** (`/`) - Main search interface. Enter query as "from -> to" or use voice input. View direct and transfer routes with times and operator info. Save favorite routes.
+
+- **Live Map** (`/map`) - Opened with the **OPEN MAP** button on the home page. Leaflet + OpenStreetMap map showing stops from the database and live Warsaw buses (blue) and trams (red), refreshed every 15 seconds. Filter vehicles by line (e.g. `523, 17`) – the map zooms to them. Zoom in to see line numbers on the vehicles. Click a stop and choose **Start here** – stops with a direct connection from it turn green. Choose **End here** on another stop and the panel tells you if there are direct connections, connections with one transfer, or none; **FIND ROUTE** then opens the search results. The locate button shows your current position. Live vehicles need `WARSAW_API_KEY` in `.env`.
 
 - **Sign In** (`/auth/sign-in`) - User login with email and password. Creates JWT session for dashboard access.
 

@@ -1,6 +1,17 @@
 // src/lib/connections.ts
 import { prisma } from "@/app/lib/db";
 
+// The GTFS import (scripts/importGTFS.ts) stores all trips of a line under one Polaczenie and
+// numbers the stops of trip N from N * 10000 (Trasa.kolejnosc). Two stops are only connected
+// if they are on the same trip, i.e. in the same block of 10000. Other imports and seeds use
+// small numbers, so there every connection is a single trip.
+export const TRIP_SEQUENCE_BLOCK = 10000;
+
+export const tripOf = (kolejnosc: number) => Math.floor(kolejnosc / TRIP_SEQUENCE_BLOCK);
+
+/** True when `to` comes after `from` on the same trip of a connection. */
+export const sameTripAfter = (from: number, to: number) => from < to && tripOf(from) === tripOf(to);
+
 type DirectConnectionResult = {
   polaczenieId: number;
   polaczenieNazwa: string;
@@ -82,7 +93,7 @@ export async function findDirectConnections(
     endByConnection.set(leg.polaczenieId, arr);
   }
 
-  // 3) assemble results: start before end, sort by time
+  // 3) assemble results: start before end on the same trip, sort by time
   const results: DirectConnectionResult[] = [];
 
   for (const s of startLegs) {
@@ -90,7 +101,7 @@ export async function findDirectConnections(
     if (!ends) continue;
 
     for (const e of ends) {
-      if (s.kolejnosc < e.kolejnosc) {
+      if (sameTripAfter(s.kolejnosc, e.kolejnosc)) {
         results.push({
           polaczenieId: s.polaczenieId,
           polaczenieNazwa: '',
@@ -228,8 +239,8 @@ export async function findOneTransferConnections(
     const reachable = reachableByConn.get(s.polaczenieId);
     if (!reachable) continue;
 
-    // stops visited after the start leg
-    const afterStart = reachable.filter(r => r.kolejnosc > s.kolejnosc);
+    // stops visited after the start leg (on the same trip)
+    const afterStart = reachable.filter(r => sameTripAfter(s.kolejnosc, r.kolejnosc));
     for (const transfer of afterStart) {
       // second leg must depart from the same transfer stop after transfer time
       const secondCandidates: EndLeg[] = await (prisma as any).trasa.findMany({
@@ -241,11 +252,11 @@ export async function findOneTransferConnections(
       });
 
       for (const secStart of secondCandidates) {
-        // Must reach endStop on same connection, and transfer start precedes end
+        // Must reach endStop on the same trip, and transfer start precedes end
         const secEnds = endByConnection.get(secStart.polaczenieId);
         if (!secEnds) continue;
         for (const secEnd of secEnds) {
-          if (secStart.kolejnosc < secEnd.kolejnosc) {
+          if (sameTripAfter(secStart.kolejnosc, secEnd.kolejnosc)) {
             results.push({
               firstPolaczenieId: s.polaczenieId,
               firstPolaczenieNazwa: '',
