@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Search, MapPin, ArrowRight, Star, Clock, Repeat, Train, Bus } from "lucide-react";
 import VoiceInput from "@/app/components/VoiceInput";
@@ -18,6 +18,8 @@ export default function SearchPage() {
   const [favMessage, setFavMessage] = useState<string | null>(null);
   const [withTransfer, setWithTransfer] = useState(false);
   const [ignoreTime, setIgnoreTime] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [scrollToResults, setScrollToResults] = useState(false);
 
   const runSearch = async () => {
     setLoading(true);
@@ -112,29 +114,31 @@ export default function SearchPage() {
     }
   };
 
-  // Handle URL parameters from favorites page
+  // Handle URL parameters from the favorites page and the map (?from=ID&to=ID, optional &transfers=1)
   useEffect(() => {
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
-    
+    const transfersParam = searchParams.get("transfers") === "1";
+
     if (fromParam && toParam) {
       const fromIdNum = Number(fromParam);
       const toIdNum = Number(toParam);
-      
+
       if (!isNaN(fromIdNum) && !isNaN(toIdNum)) {
         setFromId(fromIdNum);
         setToId(toIdNum);
-        
+        setWithTransfer(transfersParam);
+
         // Automatically trigger the route search
         setLoading(true);
         setError(null);
         setPairRoutes(null);
         setResp(null);
-        
+
         const params = new URLSearchParams();
         params.set("startId", String(fromIdNum));
         params.set("endId", String(toIdNum));
-        if (withTransfer) params.set("transfers", "1");
+        if (transfersParam) params.set("transfers", "1");
         params.set("ignoreTime", "1"); // Always ignore time for URL-based searches
         
         fetch(`/api/routeSearch/find?${params.toString()}`)
@@ -160,7 +164,7 @@ export default function SearchPage() {
             } else {
               // No routes found, still create a basic resp object
               setResp({
-                query: "From favorites (no routes found)",
+                query: "No routes found between these stops",
                 fromCandidates: [{ id: fromIdNum, nazwa: `Stop #${fromIdNum}` }],
                 toCandidates: [{ id: toIdNum, nazwa: `Stop #${toIdNum}` }],
               });
@@ -170,15 +174,25 @@ export default function SearchPage() {
             setError(String(e?.message ?? e));
             // Still set a basic resp to show the selection
             setResp({
-              query: "Error loading from favorites",
+              query: "Error loading routes",
               fromCandidates: [{ id: fromIdNum, nazwa: `Stop #${fromIdNum}` }],
               toCandidates: [{ id: toIdNum, nazwa: `Stop #${toIdNum}` }],
             });
           })
-          .finally(() => setLoading(false));
+          .finally(() => {
+            setLoading(false);
+            setScrollToResults(true);
+          });
       }
     }
   }, [searchParams]);
+
+  // Results are below the search form – bring them into view after a search opened from a link
+  useEffect(() => {
+    if (!scrollToResults || loading) return;
+    resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setScrollToResults(false);
+  }, [scrollToResults, loading]);
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: "#0a1929", position: "relative", paddingBottom: "80px" }}>
@@ -380,6 +394,7 @@ export default function SearchPage() {
               </button>
             </div>
 
+            <div ref={resultsRef} style={{ scrollMarginTop: 60 }}>
             {Array.isArray(pairRoutes) && pairRoutes.length > 0 && (
               <div>
                 <h3 style={{ fontSize: 24, fontWeight: 800, marginBottom: 20, color: "#0d47a1", display: "flex", alignItems: "center", gap: 12 }}>
@@ -445,6 +460,7 @@ export default function SearchPage() {
                 <div style={{ fontSize: 18, fontWeight: 600 }}>No routes found</div>
               </div>
             )}
+            </div>
           </div>
         )}
       </div>

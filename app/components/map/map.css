@@ -1,0 +1,71 @@
+/* Styles for the Leaflet map (app/components/map/TransitMap.tsx) */
+
+.transit-map .leaflet-container {
+  font-family: inherit;
+  background: #dde3ea;
+}
+
+/* Line-number badges for buses and trams (shown when zoomed in or filtered) */
+.vehicle-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.vehicle-badge--bus { background: #1e88e5; }
+.vehicle-badge--tram { background: #e53935; }
+
+/* A / B pins for the selected start and destination stops */
+.stop-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.stop-pin--from { background: #2e7d32; }
+.stop-pin--to { background: #ef6c00; }
+
+/* "You are here" dot */
+.my-location-dot {
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #1e88e5;
+  animation: my-location-pulse 2s ease-out infinite;
+}
+@keyframes my-location-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(30, 136, 229, 0.6); }
+  100% { box-shadow: 0 0 0 14px rgba(30, 136, 229, 0); }
+}
+
+/* Popups */
+.transit-map .leaflet-popup-content { margin: 12px 14px; }
+.map-popup { min-width: 170px; font-size: 13px; color: #37474f; }
+.map-popup__title { font-size: 15px; font-weight: 800; color: #0a1929; margin-bottom: 4px; }
+.map-popup__meta { font-size: 12px; color: #607d8b; margin-top: 2px; }
+.map-popup__chip { display: inline-block; padding: 3px 8px; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 800; }
+.map-popup__chip--bus { background: #1e88e5; }
+.map-popup__chip--tram { background: #e53935; }
+.map-popup__actions { display: flex; gap: 6px; margin-top: 10px; }
+.map-popup__btn { flex: 1; padding: 7px 8px; border: none; border-radius: 8px; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.map-popup__btn--from { background: #2e7d32; }
+.map-popup__btn--to { background: #ef6c00; }
+
+@keyframes map-spin { to { transform: rotate(360deg); } }
+.map-spin { animation: map-spin 1s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .my-location-dot,
+  .map-spin { animation: none; }
+}

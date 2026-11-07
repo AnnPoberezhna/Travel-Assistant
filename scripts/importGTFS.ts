@@ -370,7 +370,9 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
             continue;
           }
           const sequenceBase = parseInt(stopTime.stop_sequence);
-          // Offset to avoid uniqueness collisions between multiple trips of the same line
+          // Offset to avoid uniqueness collisions between multiple trips of the same line.
+          // The route search relies on this block size to keep stops of one trip together
+          // (TRIP_SEQUENCE_BLOCK in app/lib/connections.ts) – change both together.
           const sequence = sequenceBase + idx * 10000;
 
           // Parse time
@@ -379,7 +381,9 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
           const minutes = parseInt(timeParts[1]);
           const now = new Date();
           const arrivalTime = new Date(now);
-          arrivalTime.setHours(hours % 24, minutes, 0, 0); // % 24 because GTFS times can be 25:00 or later
+          // GTFS times can be 24:00 or later for trips after midnight; setHours rolls those over
+          // to the next day, so the times of a trip stay in order
+          arrivalTime.setHours(hours, minutes, 0, 0);
 
           await prisma.trasa.create({
             data: {
