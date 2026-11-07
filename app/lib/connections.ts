@@ -35,7 +35,7 @@ export async function findDirectConnections(
   now: Date | null,
   limit = 20
 ): Promise<DirectConnectionResult[]> {
-  // 1) wszystkie „nogi” z przystanku startowego
+  // 1) all "legs" from the start stop
   const startLegs: StartLeg[] = await (prisma as any).trasa.findMany({
     where: {
       przystanekId: startStopId,
@@ -59,7 +59,7 @@ export async function findDirectConnections(
 
   if (!startLegs.length) return [];
 
-  // 2) wszystkie „nogi” z przystanku końcowego dla tych samych połączeń
+  // 2) all "legs" from the end stop for the same connections
   const polaczenieIds = [...new Set(startLegs.map(l => l.polaczenieId))];
 
   const endLegs: EndLeg[] = await (prisma as any).trasa.findMany({
@@ -82,7 +82,7 @@ export async function findDirectConnections(
     endByConnection.set(leg.polaczenieId, arr);
   }
 
-  // 3) składanie wyników: start przed końcem, sortowanie po czasie
+  // 3) assemble results: start before end, sort by time
   const results: DirectConnectionResult[] = [];
 
   for (const s of startLegs) {
@@ -142,7 +142,7 @@ export async function findDirectConnections(
     r.polaczenieNazwa = connNames.get(r.polaczenieId) || `Connection ${r.polaczenieId}`;
   }
 
-  // sortujemy po czasie startu,
+  // sort by departure time
   results.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
   return results.slice(0, limit);

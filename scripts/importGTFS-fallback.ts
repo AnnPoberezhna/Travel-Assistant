@@ -1,7 +1,7 @@
 /**
  * Import GTFS - Fallback script
- * Gdy niemożliwy jest import z wewnętrznych API, 
- * script generwuje realistyczne dane GTFS dla Wrocławia
+ * When importing from internal APIs is not possible,
+ * this script generates realistic GTFS data for Wrocław
  */
 import { PrismaClient } from '@prisma/client';
 
@@ -21,16 +21,16 @@ interface CreatePrzewoźnikInput {
   kontakt: string;
 }
 
-// Dane rzeczywiste przystanków Wrocławia
+// Real data for Wrocław stops
 const WROCLAW_STOPS: CreatePrzystanekInput[] = [
-  // Główne dworzece i węzły
+  // Main stations and hubs
   { nazwa: 'Wrocław Główny', latitude: 51.1079, longitude: 17.0385, adres: 'Wrocław' },
   { nazwa: 'Wrocław Przedmieście', latitude: 51.1095, longitude: 17.0301, adres: 'Wrocław' },
   { nazwa: 'Wrocław Zachód', latitude: 51.1051, longitude: 16.9762, adres: 'Wrocław' },
   { nazwa: 'Wrocław Muchobór', latitude: 51.0933, longitude: 16.9550, adres: 'Wrocław' },
   { nazwa: 'Wrocław Leśnica', latitude: 51.0735, longitude: 16.9897, adres: 'Wrocław' },
 
-  // Inne miasta Dolnośląskie
+  // Other Lower Silesian cities
   { nazwa: 'Opole Główne', latitude: 50.6689, longitude: 17.9260, adres: 'Opole' },
   { nazwa: 'Opole Zachodnie', latitude: 50.6701, longitude: 17.9095, adres: 'Opole' },
   
@@ -53,7 +53,7 @@ const WROCLAW_STOPS: CreatePrzystanekInput[] = [
   { nazwa: 'Gdańsk Oliwa', latitude: 54.4803, longitude: 18.5695, adres: 'Gdańsk' },
 ];
 
-// Przewoźnicy
+// Carriers
 const CARRIERS: CreatePrzewoźnikInput[] = [
   { nazwa: 'PKP InterCity', typ: 'RAIL', kraj: 'PL', kontakt: 'info@pkp.pl' },
   { nazwa: 'PKP Express', typ: 'RAIL', kraj: 'PL', kontakt: 'info@pkp.pl' },
@@ -69,7 +69,7 @@ async function seedWroclaw() {
     console.log('🚀 IMPORT GTFS - FALLBACK GENERATOR\n');
     console.time('Całkowity czas');
 
-    // Usuń stare dane
+    // Remove old data
     console.log('🗑️  Czyszczenie starej bazy...');
     await prisma.trasa.deleteMany();
     await prisma.polaczenie.deleteMany();
@@ -77,7 +77,7 @@ async function seedWroclaw() {
     await prisma.przewoznik.deleteMany();
     console.log('✅ Wyczyszczono\n');
 
-    // Importuj przystanki
+    // Import stops
     console.log('🛑 Importowanie przystanków...');
     const stops = await Promise.all(
       WROCLAW_STOPS.map(stop =>
@@ -86,7 +86,7 @@ async function seedWroclaw() {
     );
     console.log(`✅ Importowano ${stops.length} przystanków\n`);
 
-    // Importuj przewoźników
+    // Import carriers
     console.log('🚌 Importowanie przewoźników...');
     const carriers = await Promise.all(
       CARRIERS.map(carrier =>
@@ -95,7 +95,7 @@ async function seedWroclaw() {
     );
     console.log(`✅ Importowano ${carriers.length} przewoźników\n`);
 
-    // Generuj połączenia
+    // Generate connections
     console.log('🔗 Generowanie połączeń...');
     
     const connectionRoutes = [
@@ -108,7 +108,7 @@ async function seedWroclaw() {
       { from: 0, to: 16, carrier: 0, name: 'Pociąg Wrocław-Kraków' },
       { from: 0, to: 18, carrier: 0, name: 'Pociąg Wrocław-Gdańsk' },
       
-      // Busy
+      // Buses
       { from: 0, to: 5, carrier: 4, name: 'Bus Wrocław-Opole' },
       { from: 0, to: 8, carrier: 4, name: 'Bus Wrocław-Katowice' },
       { from: 0, to: 13, carrier: 4, name: 'Bus Wrocław-Warszawa' },
@@ -123,7 +123,7 @@ async function seedWroclaw() {
       const endStop = stops[route.to];
       const carrier = carriers[route.carrier];
 
-      // Polaczenie
+      // Connection
       const polaczenie = await prisma.polaczenie.create({
         data: {
           przewoznikId: carrier.id,
@@ -132,11 +132,11 @@ async function seedWroclaw() {
         }
       });
 
-      // Nogi tras
+      // Route legs
       const startTime = new Date();
       startTime.setHours(Math.floor(Math.random() * 12) + 6, Math.floor(Math.random() * 60), 0, 0);
 
-      // Przystanek startowy
+      // Start stop
       await prisma.trasa.create({
         data: {
           polaczenieId: polaczenie.id,
@@ -146,7 +146,7 @@ async function seedWroclaw() {
         }
       });
 
-      // Przystanki pośrednie (jeśli różne miasta)
+      // Intermediate stops (if different cities)
       if (Math.abs(route.from - route.to) > 2) {
         const midIndex = Math.floor((route.from + route.to) / 2);
         const midStop = stops[midIndex];
@@ -166,7 +166,7 @@ async function seedWroclaw() {
         createdLegs++;
       }
 
-      // Przystanek końcowy
+      // End stop
       const endTime = new Date(startTime);
       endTime.setHours(endTime.getHours() + Math.floor(Math.random() * 6) + 3);
 

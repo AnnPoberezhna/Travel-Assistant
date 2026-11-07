@@ -62,28 +62,28 @@ export async function GET(req: NextRequest) {
     response.directPairs = pairResults;
   }
 
-  // Loguj historię TYLKO dla zalogowanych użytkowników (userId), anonimowi są pomijani
+  // Log search history ONLY for logged-in users (userId); anonymous users are skipped
   try {
     let userId: number | null = null;
 
-    // Spróbuj pobrać aktywną sesję z istniejącego endpointu NextAuth bez modyfikowania auth
+    // Try to get the active session from the existing NextAuth endpoint without modifying auth
     try {
       const sessionRes = await fetch(`${url.origin}/api/auth/session`, {
         headers: {
-          // przekaż ciasteczka z żądania, aby sesja była rozpoznana
+          // forward the request cookies so the session is recognized
           cookie: req.headers.get("cookie") ?? "",
         },
         cache: "no-store",
       });
       if (sessionRes.ok) {
         const sessionJson: any = await sessionRes.json().catch(() => null);
-        // Preferuj bezpośrednie id z sesji, jeśli istnieje
+        // Prefer the user id directly from the session, if present
         const sid = sessionJson?.user?.id;
         const sidNum = sid !== undefined ? Number(sid) : NaN;
         if (!Number.isNaN(sidNum)) {
           userId = sidNum;
         } else {
-          // Jeśli brak id w sesji, spróbuj znaleźć użytkownika po emailu
+          // If the session has no id, try to find the user by email
           const email: string | undefined = sessionJson?.user?.email;
           if (email) {
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -95,10 +95,10 @@ export async function GET(req: NextRequest) {
         }
       }
     } catch {
-      // brak sesji lub błąd – pomijamy
+      // no session or an error – skip
     }
 
-    // DEV-only override for testing via header/query (używane tylko gdy brak realnej sesji)
+    // DEV-only override for testing via header/query (used only when there is no real session)
     if (process.env.NODE_ENV !== "production") {
       const testHeader = req.headers.get("x-test-user-id");
       const testQuery = url.searchParams.get("testUserId");
@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
       });
     }
   } catch (_) {
-    // pomiń błędy logowania
+    // ignore history logging errors
   }
 
   return NextResponse.json(response);
