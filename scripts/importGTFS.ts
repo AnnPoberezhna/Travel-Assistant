@@ -9,14 +9,14 @@ import AdmZip from 'adm-zip';
 
 const prisma = new PrismaClient();
 
-// Alternatywne GTFS źródła:
-// DZIAŁAJĄCE:
-// Warszawa (mkuran.pl): https://mkuran.pl/gtfs/warsaw.zip - 94MB, aktualizowane codziennie
+// Alternative GTFS sources:
+// WORKING:
+// Warszawa (mkuran.pl): https://mkuran.pl/gtfs/warsaw.zip - 94MB, updated daily
 // 
-// NIE DZIAŁAJĄ:
+// NOT WORKING:
 // Wrocław MPK: https://www.wroclaw.pl/open-data/opendata/pozatransportowe/gtfs/wroclaw.zip - 404
 // Kraków JakDojade: https://www.jakdojade.pl/data/gtfs.zip - invalid format
-// Gdańsk: https://www.zdmigdansk.pl/en/open-data/ - wymaga ręcznego pobierania
+// Gdańsk: https://www.zdmigdansk.pl/en/open-data/ - requires manual download
 
 const GTFS_URL = 'https://mkuran.pl/gtfs/warsaw.zip';
 const TEMP_DIR = path.join(process.cwd(), 'temp-gtfs');
@@ -120,7 +120,7 @@ async function importStops() {
   const content = fs.readFileSync(stopsFile, 'utf-8');
   const stops = parse(content, { columns: true }) as Stop[];
 
-  // Importuj wszystkie przystanki z feedu (pełne pokrycie tras)
+  // Import all stops from the feed (full route coverage)
   const stopsToImport = stops;
   const stopIdMap = new Map<string, number>(); // GTFS stop_id -> DB Przystanek.id
   let created = 0;
@@ -164,7 +164,7 @@ async function importAgencies() {
   const agencyFile = path.join(GTFS_EXTRACT_DIR, 'agency.txt');
   if (!fs.existsSync(agencyFile)) {
     console.warn('⚠️  agency.txt nie znaleziony, tworzę domyślnego przewoźnika...');
-    // Jeśli brak agency.txt, utwórz domyślnego przewoźnika
+    // If agency.txt is missing, create a default carrier
     const agency = await prisma.przewoznik.create({
       data: {
         nazwa: 'ZTM Warszawa',
@@ -189,7 +189,7 @@ async function importAgencies() {
       const przewoznik = await prisma.przewoznik.create({
         data: {
           nazwa: agency.agency_name,
-          typ: 'BUS', // Domyślnie BUS, będzie nadpisany przez routes
+          typ: 'BUS', // BUS by default, will be overwritten by routes
           kraj: 'PL',
           kontakt: agency.agency_phone || agency.agency_url || ''
         }
@@ -217,10 +217,10 @@ async function importRoutes(agencyIdMap: Map<string, number>) {
   const content = fs.readFileSync(routesFile, 'utf-8');
   const routes = parse(content, { columns: true }) as Route[];
 
-  // LIMIT: Tylko pierwsze 500 linii (szersze pokrycie)
+  // LIMIT: Only the first 500 lines (wider coverage)
   const routesToImport = routes.slice(0, 500);
 
-  // Mapa typów transportu GTFS na nasze typy
+  // Map GTFS transport types to our types
   const getTransportType = (routeType: string) => {
     const type = parseInt(routeType);
     switch (type) {
@@ -241,7 +241,7 @@ async function importRoutes(agencyIdMap: Map<string, number>) {
       const nazwa = route.route_short_name || route.route_long_name || `Route ${route.route_id}`;
       const typ = getTransportType(route.route_type);
 
-      // Znajdź przewoźnika dla tej route
+      // Find the carrier for this route
       const agencyId = route.agency_id || '1';
       const przewoznikId = agencyIdMap.get(agencyId);
 
@@ -250,7 +250,7 @@ async function importRoutes(agencyIdMap: Map<string, number>) {
         continue;
       }
 
-      // Utwórz POŁĄCZENIE (nie przewoźnika!)
+      // Create a CONNECTION (not a carrier!)
       const polaczenie = await prisma.polaczenie.create({
         data: {
           przewoznikId: przewoznikId,
@@ -284,15 +284,15 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
     throw new Error('trips.txt lub stop_times.txt nie znaleziony');
   }
 
-  // Wczytaj trips
+  // Load trips
   const tripsContent = fs.readFileSync(tripsFile, 'utf-8');
   const trips = parse(tripsContent, { columns: true }) as Trip[];
 
-  // Wczytaj stop_times
+  // Load stop_times
   const stopTimesContent = fs.readFileSync(stopTimesFile, 'utf-8');
   const stopTimes = parse(stopTimesContent, { columns: true }) as StopTime[];
 
-  // Grupuj stop times po trip_id
+  // Group stop times by trip_id
   const stopTimesByTrip = new Map<string, StopTime[]>();
   for (const st of stopTimes) {
     if (!stopTimesByTrip.has(st.trip_id)) {
@@ -301,7 +301,7 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
     stopTimesByTrip.get(st.trip_id)!.push(st);
   }
 
-  // Sortuj po stop_sequence
+  // Sort by stop_sequence
   for (const times of stopTimesByTrip.values()) {
     times.sort((a, b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
   }
@@ -309,18 +309,18 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
   let createdTrips = 0;
   let createdLegs = 0;
 
-  // Oceń pokrycie przystanków dla tripów (ile przystanków mamy w stopIdMap)
+  // Evaluate stop coverage for trips (how many of their stops are in stopIdMap)
   const scoredTrips = trips.map(t => {
     const times = stopTimesByTrip.get(t.trip_id) || [];
     const knownCount = times.reduce((acc, st) => acc + (stopIdMap.has(st.stop_id) ? 1 : 0), 0);
     return { trip: t, knownCount };
   });
 
-  // Zbuduj listę tripów per route, wybierz najlepsze (największe pokrycie) do 8 na linię
+  // Build a list of trips per route and pick the best ones (highest coverage), up to 8 per line
   const tripsByRoute = new Map<string, Trip[]>();
   for (const { trip, knownCount } of scoredTrips) {
     if (!routeIdMap.has(trip.route_id)) continue;
-    if (knownCount < 2) continue; // potrzebujemy co najmniej 2 znane przystanki
+    if (knownCount < 2) continue; // we need at least 2 known stops
     const arr = tripsByRoute.get(trip.route_id) || [];
     arr.push(trip);
     tripsByRoute.set(trip.route_id, arr);
@@ -328,7 +328,7 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
 
   const tripsToImport: { trip: Trip; idx: number }[] = [];
   for (const [routeId, tripList] of tripsByRoute.entries()) {
-    // posortuj tripy tej linii po pokryciu
+    // sort this line's trips by coverage
     const sorted = tripList
       .map(t => ({
         trip: t,
@@ -336,14 +336,14 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
       }))
       .sort((a, b) => b.known - a.known);
 
-    const take = sorted.slice(0, 8); // do 8 tripów na linię
+    const take = sorted.slice(0, 8); // up to 8 trips per line
     take.forEach((t, idx) => tripsToImport.push({ trip: t.trip, idx }));
   }
 
-  // importuj wszystkie dostępne tripy
+  // import all available trips
   const finalTrips = tripsToImport;
 
-  // Importuj trip'y jako połączenia (kilka tripów na route z offsetem kolejności)
+  // Import trips as connections (several trips per route with a sequence offset)
   for (const { trip, idx } of finalTrips) {
     try {
       const polaczenieId = routeIdMap.get(trip.route_id);
@@ -351,35 +351,35 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
 
       if (times.length === 0) continue;
 
-      // Sprawdź czy połączenie istnieje (używamy mapy route -> polaczenie)
+      // Check whether the connection exists (using the route -> polaczenie map)
       if (!polaczenieId) {
         console.warn(`⚠️  Route ${trip.route_id} nie w mapie`);
         continue;
       }
 
-      // Trip to konkretna TRASA w ramach połączenia/linii
-      // Nie tworzymy nowego polaczenia, tylko nogi tras dla istniejącego
+      // A trip is a specific ROUTE within a connection/line
+      // We don't create a new connection, only route legs for the existing one
 
 
-      // Importuj nogi trasy
+      // Import route legs
       for (const stopTime of times) {
         try {
           const przystanekDbId = stopIdMap.get(stopTime.stop_id);
           if (!przystanekDbId) {
-            // Przystanek niezaimportowany — pomijamy ten punkt trasy
+            // Stop was not imported — skip this route point
             continue;
           }
           const sequenceBase = parseInt(stopTime.stop_sequence);
-          // Offset aby uniknąć kolizji unikalności dla wielu tripów tej samej linii
+          // Offset to avoid uniqueness collisions between multiple trips of the same line
           const sequence = sequenceBase + idx * 10000;
 
-          // Parse czasu
+          // Parse time
           const timeParts = (stopTime.departure_time || stopTime.arrival_time).split(':');
           const hours = parseInt(timeParts[0]);
           const minutes = parseInt(timeParts[1]);
           const now = new Date();
           const arrivalTime = new Date(now);
-          arrivalTime.setHours(hours % 24, minutes, 0, 0); // % 24 bo GTFS może mieć 25:00
+          arrivalTime.setHours(hours % 24, minutes, 0, 0); // % 24 because GTFS times can be 25:00 or later
 
           await prisma.trasa.create({
             data: {
@@ -392,12 +392,12 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
 
           createdLegs++;
         } catch (error) {
-          // Loguj istotne błędy (np. unikalność)
+          // Log significant errors (e.g. uniqueness)
           const code = (error as any)?.code;
           if (code === 'P2002') {
-            // naruszenie unikalności — pomijamy
+            // uniqueness violation — skip
           } else {
-            // Inne błędy pokaż
+            // Show other errors
             console.warn(`⚠️  Błąd dodawania nogi dla trip ${trip.trip_id}:`, (error as any)?.message || error);
           }
         }
@@ -441,14 +441,14 @@ async function main() {
     console.log('🚀 IMPORT GTFS MPK WROCŁAW\n');
     console.time('Całkowity czas');
 
-    // Usuń stare dane
+    // Remove old data
     await clearDatabase();
 
-    // Pobierz i rozpakuj
+    // Download and extract
     await downloadGTFS();
     await extractGTFS();
 
-    // Importuj dane
+    // Import data
     const stopIdMap = await importStops();
     const agencyIdMap = await importAgencies();
     const routeIdMap = await importRoutes(agencyIdMap);

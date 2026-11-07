@@ -49,7 +49,7 @@ function stripDiacritics(str) {
 async function main() {
   console.time('seed');
 
-  // 1. Czyścimy dane w odpowiedniej kolejności (FK!)
+  // 1. Clear data in the correct order (FK!)
   await prisma.favoriteRoutes.deleteMany();
   await prisma.searchHistory.deleteMany();
   await prisma.trasa.deleteMany();
@@ -60,7 +60,7 @@ async function main() {
 
   const now = new Date();
 
-  // 2. PRZEWOŹNICY – ~15 sztuk
+  // 2. CARRIERS – ~15 items
   const przewoznicyData = [
     { nazwa: 'PKP Intercity', typ: 'RAIL', kraj: 'PL', kontakt: 'kontakt@pkp-intercity.pl' },
     { nazwa: 'Polregio', typ: 'RAIL', kraj: 'PL', kontakt: 'info@polregio.pl' },
@@ -92,7 +92,7 @@ async function main() {
     )
   );
 
-  // 3. PRZYSTANKI – ~250 (realne + sztuczne)
+  // 3. STOPS – ~250 (real + generated)
   const baseStations = [
     { nazwa: 'Wrocław Główny', latitude: 51.0981, longitude: 17.0366, adres: 'Wrocław' },
     { nazwa: 'Wrocław Mikołajów', latitude: 51.118, longitude: 17.014, adres: 'Wrocław' },
@@ -171,7 +171,7 @@ async function main() {
     )
   );
 
-  // 4. POŁĄCZENIA + TRASA
+  // 4. CONNECTIONS + ROUTES
   const targetPolaczeniaCount = 1000;
   const polaczeniaCreated = [];
 
@@ -205,7 +205,7 @@ async function main() {
 
     polaczeniaCreated.push(polaczenie);
 
-    // generujemy przebieg trasy
+    // generate the route path
     const stopsCount = randomInt(3, 8);
     const usedStationIds = new Set();
     const traseStations = [];
@@ -236,7 +236,7 @@ async function main() {
       traseStations.push(newEnd);
     }
 
-    let minutesOffset = randomInt(0, 180); // start w najbliższych 3h
+    let minutesOffset = randomInt(0, 180); // start within the next 3h
     const minBetweenStops = randomInt(20, 90);
 
     const legs = traseStations.map((station, idx) => {
@@ -256,7 +256,7 @@ async function main() {
     );
   }
 
-  // 5. UŻYTKOWNICY – sztuczni userzy
+  // 5. USERS – fake users
   const names = [
     'Filip', 'Anna', 'Bartosz', 'Borys', 'Kuba', 'Marta', 'Kasia',
     'Paweł', 'Ola', 'Karol', 'Natalia', 'Piotr', 'Magda', 'Kacper',
@@ -272,7 +272,7 @@ async function main() {
     usersData.push({
       email: `${username}@example.com`,
       username,
-      // w realu miałbyś tu hashe; do sztucznego seeda wystarczy plain
+      // in production you would store hashes here; plain text is enough for a fake seed
       password: 'password123',
       role: Math.random() < 0.1 ? 'ADMIN' : 'USER',
     });
@@ -282,7 +282,7 @@ async function main() {
     usersData.map((data) => prisma.user.create({ data }))
   );
 
-  // 6. HISTORIA WYSZUKIWAŃ – SearchHistory
+  // 6. SEARCH HISTORY – SearchHistory
   const searchHistoryCreates = [];
 
   for (const user of users) {
@@ -314,7 +314,7 @@ async function main() {
     }
   }
 
-  // + trochę anonimowych wyszukiwań (userId = null)
+  // + some anonymous searches (userId = null)
   const anonymousSearches = 50;
   for (let i = 0; i < anonymousSearches; i++) {
     const fromStation = randomItem(przystanki);
@@ -343,12 +343,12 @@ async function main() {
 
   await prisma.$transaction(searchHistoryCreates);
 
-  // 7. ULUBIONE TRASY – FavoriteRoutes
+  // 7. FAVORITE ROUTES – FavoriteRoutes
   const favoriteRoutesCreates = [];
 
   for (const user of users) {
     const favCount = randomInt(2, 5);
-    const pairSet = new Set(); // żeby nie duplikować dla tego samego usera
+    const pairSet = new Set(); // to avoid duplicates for the same user
 
     let attempts = 0;
     let createdForUser = 0;
