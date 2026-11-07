@@ -43,6 +43,10 @@ model Przystanek {
   latitude    Float?  
   longitude   Float?
   adres       String?
+  // Warsaw ZTM stop code from the GTFS import (stop_id 701301 = stop group 7013, post 01).
+  // Used to ask the Warsaw API for live departures (see app/lib/liveRoutes.ts).
+  ztmStopId   String?
+  ztmStopNr   String?
   trasy       Trasa[]
   favoriteRoutes_start FavoriteRoutes[] @relation("PrzystanekStart")
   favoriteRoutes_koniec FavoriteRoutes[] @relation("PrzystanekKoniec")
@@ -79,6 +83,9 @@ model Trasa {
   przystanekId Int
   kolejnosc    Int
   przyjazdDt   DateTime @map("przyjazd_dt")
+  // Route variant of the trip this stop belongs to (GTFS variant_code, e.g. "TP-MAR").
+  // The Warsaw API returns the same code for each departure, so we know if a bus reaches the destination.
+  wariant      String?
 
   polaczenie   Polaczenie @relation(fields: [polaczenieId], references: [id], onDelete: Cascade)
   przystanek   Przystanek @relation(fields: [przystanekId], references: [id], onDelete: Cascade)

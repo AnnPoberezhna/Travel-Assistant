@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, MapPin, ArrowRight, Star, Clock, Repeat, Train, Bus } from "lucide-react";
+import Link from "next/link";
+import { Search, MapPin, ArrowRight, Star, Clock, Repeat, Train, Bus, Map as MapIcon } from "lucide-react";
 import VoiceInput from "@/app/components/VoiceInput";
+import LiveDepartures from "@/app/components/LiveDepartures";
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
@@ -252,6 +254,10 @@ export default function SearchPage() {
             <Bus size={56} color="#66bb6a" style={{ animation: "pulse 2s ease-in-out infinite 1s" }} />
           </div>
           <p style={{ fontSize: 20, color: "#90caf9", fontWeight: 500 }}>Your Transport Connection Hub</p>
+          <Link href="/map" style={{ display: "inline-flex", alignItems: "center", gap: 10, marginTop: 24, padding: "14px 28px", background: "linear-gradient(135deg, #66bb6a 0%, #43a047 100%)", color: "#fff", borderRadius: 14, fontSize: 16, fontWeight: 700, textDecoration: "none", boxShadow: "0 6px 20px rgba(102, 187, 106, 0.4)" }}>
+            <MapIcon size={20} />
+            {searchParams.get("from") ? "BACK TO MAP" : "OPEN MAP"}
+          </Link>
         </div>
 
         <div style={{ background: "rgba(255, 255, 255, 0.95)", borderRadius: 24, padding: 40, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", border: "2px solid rgba(66, 165, 245, 0.3)" }}>
@@ -395,6 +401,7 @@ export default function SearchPage() {
             </div>
 
             <div ref={resultsRef} style={{ scrollMarginTop: 60 }}>
+            {Array.isArray(pairRoutes) && <LiveDepartures fromId={fromId} toId={toId} />}
             {Array.isArray(pairRoutes) && pairRoutes.length > 0 && (
               <div>
                 <h3 style={{ fontSize: 24, fontWeight: 800, marginBottom: 20, color: "#0d47a1", display: "flex", alignItems: "center", gap: 12 }}>

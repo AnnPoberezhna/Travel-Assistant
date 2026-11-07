@@ -60,6 +60,17 @@ interface Trip {
   trip_id: string;
   trip_headsign?: string;
   direction_id?: string;
+  variant_code?: string;
+}
+
+// Warsaw ZTM stop posts have stop_id = stop group (4 digits) + post number (stop_code, 2 digits),
+// e.g. 701301 = Centrum 01. Metro stations and entrances use other ids and get no ZTM code.
+function ztmCode(stop: Stop): { ztmStopId: string; ztmStopNr: string } | null {
+  const code = stop.stop_code ?? '';
+  if (/^\d{6}$/.test(stop.stop_id) && /^\d{2}$/.test(code) && stop.stop_id.endsWith(code)) {
+    return { ztmStopId: stop.stop_id.slice(0, -2), ztmStopNr: code };
+  }
+  return null;
 }
 
 interface StopTime {
@@ -139,7 +150,8 @@ async function importStops() {
           nazwa: stop.stop_name,
           latitude,
           longitude,
-          adres: stop.stop_desc || stop.stop_name
+          adres: stop.stop_desc || stop.stop_name,
+          ...ztmCode(stop),
         }
       });
 
@@ -309,38 +321,28 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
   let createdTrips = 0;
   let createdLegs = 0;
 
-  // Evaluate stop coverage for trips (how many of their stops are in stopIdMap)
-  const scoredTrips = trips.map(t => {
-    const times = stopTimesByTrip.get(t.trip_id) || [];
-    const knownCount = times.reduce((acc, st) => acc + (stopIdMap.has(st.stop_id) ? 1 : 0), 0);
-    return { trip: t, knownCount };
-  });
-
-  // Build a list of trips per route and pick the best ones (highest coverage), up to 8 per line
-  const tripsByRoute = new Map<string, Trip[]>();
-  for (const { trip, knownCount } of scoredTrips) {
-    if (!routeIdMap.has(trip.route_id)) continue;
-    if (knownCount < 2) continue; // we need at least 2 known stops
-    const arr = tripsByRoute.get(trip.route_id) || [];
-    arr.push(trip);
-    tripsByRoute.set(trip.route_id, arr);
-  }
-
+  // Import one trip for every distinct stop sequence of a line (its route variants and directions).
+  // This covers every line at every stop, so the route search knows which lines connect two stops
+  // and how long the ride takes. Actual departure times come live from the Warsaw API
+  // (app/lib/liveRoutes.ts), so we don't need every trip of the day.
+  const seenPatterns = new Set<string>();
+  const tripsPerRoute = new Map<string, number>();
   const tripsToImport: { trip: Trip; idx: number }[] = [];
-  for (const [routeId, tripList] of tripsByRoute.entries()) {
-    // sort this line's trips by coverage
-    const sorted = tripList
-      .map(t => ({
-        trip: t,
-        known: (stopTimesByTrip.get(t.trip_id) || []).reduce((acc, st) => acc + (stopIdMap.has(st.stop_id) ? 1 : 0), 0)
-      }))
-      .sort((a, b) => b.known - a.known);
+  for (const trip of trips) {
+    if (!routeIdMap.has(trip.route_id)) continue;
+    const times = stopTimesByTrip.get(trip.trip_id) || [];
+    const known = times.filter(st => stopIdMap.has(st.stop_id));
+    if (known.length < 2) continue; // we need at least 2 known stops
 
-    const take = sorted.slice(0, 8); // up to 8 trips per line
-    take.forEach((t, idx) => tripsToImport.push({ trip: t.trip, idx }));
+    const pattern = `${trip.route_id}|${known.map(st => st.stop_id).join('>')}`;
+    if (seenPatterns.has(pattern)) continue;
+    seenPatterns.add(pattern);
+
+    const idx = tripsPerRoute.get(trip.route_id) ?? 0;
+    tripsPerRoute.set(trip.route_id, idx + 1);
+    tripsToImport.push({ trip, idx });
   }
 
-  // import all available trips
   const finalTrips = tripsToImport;
 
   // Import trips as connections (several trips per route with a sequence offset)
@@ -361,54 +363,47 @@ async function importConnections(routeIdMap: Map<string, number>, stopIdMap: Map
       // We don't create a new connection, only route legs for the existing one
 
 
-      // Import route legs
+      // Import route legs (all stops of the trip in one query)
+      const legs = [];
       for (const stopTime of times) {
-        try {
-          const przystanekDbId = stopIdMap.get(stopTime.stop_id);
-          if (!przystanekDbId) {
-            // Stop was not imported — skip this route point
-            continue;
-          }
-          const sequenceBase = parseInt(stopTime.stop_sequence);
-          // Offset to avoid uniqueness collisions between multiple trips of the same line.
-          // The route search relies on this block size to keep stops of one trip together
-          // (TRIP_SEQUENCE_BLOCK in app/lib/connections.ts) – change both together.
-          const sequence = sequenceBase + idx * 10000;
-
-          // Parse time
-          const timeParts = (stopTime.departure_time || stopTime.arrival_time).split(':');
-          const hours = parseInt(timeParts[0]);
-          const minutes = parseInt(timeParts[1]);
-          const now = new Date();
-          const arrivalTime = new Date(now);
-          // GTFS times can be 24:00 or later for trips after midnight; setHours rolls those over
-          // to the next day, so the times of a trip stay in order
-          arrivalTime.setHours(hours, minutes, 0, 0);
-
-          await prisma.trasa.create({
-            data: {
-              polaczenieId: polaczenieId,
-              przystanekId: przystanekDbId,
-              kolejnosc: sequence,
-              przyjazdDt: arrivalTime
-            }
-          });
-
-          createdLegs++;
-        } catch (error) {
-          // Log significant errors (e.g. uniqueness)
-          const code = (error as any)?.code;
-          if (code === 'P2002') {
-            // uniqueness violation — skip
-          } else {
-            // Show other errors
-            console.warn(`⚠️  Błąd dodawania nogi dla trip ${trip.trip_id}:`, (error as any)?.message || error);
-          }
+        const przystanekDbId = stopIdMap.get(stopTime.stop_id);
+        if (!przystanekDbId) {
+          // Stop was not imported — skip this route point
+          continue;
         }
+        const sequenceBase = parseInt(stopTime.stop_sequence);
+        // Offset to avoid uniqueness collisions between multiple trips of the same line.
+        // The route search relies on this block size to keep stops of one trip together
+        // (TRIP_SEQUENCE_BLOCK in app/lib/connections.ts) – change both together.
+        const sequence = sequenceBase + idx * 10000;
+
+        // Parse time
+        const timeParts = (stopTime.departure_time || stopTime.arrival_time).split(':');
+        const hours = parseInt(timeParts[0]);
+        const minutes = parseInt(timeParts[1]);
+        const arrivalTime = new Date();
+        // GTFS times can be 24:00 or later for trips after midnight; setHours rolls those over
+        // to the next day, so the times of a trip stay in order
+        arrivalTime.setHours(hours, minutes, 0, 0);
+
+        legs.push({
+          polaczenieId: polaczenieId,
+          przystanekId: przystanekDbId,
+          kolejnosc: sequence,
+          przyjazdDt: arrivalTime,
+          wariant: trip.variant_code || null,
+        });
+      }
+
+      try {
+        const result = await prisma.trasa.createMany({ data: legs, skipDuplicates: true });
+        createdLegs += result.count;
+      } catch (error) {
+        console.warn(`⚠️  Błąd dodawania nóg dla trip ${trip.trip_id}:`, (error as any)?.message || error);
       }
 
       createdTrips++;
-      if (createdTrips % 5 === 0) {
+      if (createdTrips % 100 === 0) {
         console.log(`  📍 Przetworzono ${createdTrips}/${tripsToImport.length} tras...`);
       }
     } catch (error) {
