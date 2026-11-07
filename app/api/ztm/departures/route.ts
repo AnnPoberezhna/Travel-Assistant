@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDepartures } from "@/app/lib/warsawApi";
 import { warsawApiErrorResponse } from "@/app/lib/apiErrors";
 
-// GET /api/ztm/departures – najbliższe odjazdy z przystanku (rozkład z API Warszawy)
-//   ?stopId=7009   numer zespołu przystankowego
-//   ?stopNr=01     numer słupka w zespole
-//   ?line=523      opcjonalnie tylko jedna linia
-//   ?limit=20      liczba odjazdów
+// GET /api/ztm/departures – next departures from a stop (timetable from the Warsaw API)
+//   ?stopId=7009   stop group number
+//   ?stopNr=01     stop post number within the group
+//   ?line=523      optional, a single line only
+//   ?limit=20      number of departures
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const stopId = params.get("stopId")?.trim();

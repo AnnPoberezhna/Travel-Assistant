@@ -1,26 +1,26 @@
-// Klient API Miasta Stołecznego Warszawy – https://api.um.warszawa.pl/
+// Client for the City of Warsaw API – https://api.um.warszawa.pl/
 //
-// Klucz API trzymamy w pliku .env jako WARSAW_API_KEY (nigdy w repozytorium).
-// Ten moduł działa tylko po stronie serwera (route handlery w app/api),
-// dzięki temu klucz nie trafia do przeglądarki.
+// The API key is kept in the .env file as WARSAW_API_KEY (never in the repository).
+// This module runs only on the server (route handlers in app/api),
+// so the key never reaches the browser.
 
 const BASE_URL = "https://api.um.warszawa.pl/api/action";
 
-// Identyfikatory zasobów w API Warszawy (sprawdzone na żywym API, listopad 2026).
-// Uwaga: lista przystanków ze współrzędnymi (dbstore_get) i wyszukiwanie
-// przystanku po nazwie przestały działać w tym API – przystanki trzeba brać
-// z innego źródła (np. GTFS).
+// Resource IDs in the Warsaw API (verified against the live API, November 2026).
+// Note: the stop list with coordinates (dbstore_get) and searching for
+// a stop by name no longer work in this API – stops have to be taken
+// from another source (e.g. GTFS).
 const RESOURCES = {
-  // busestrams_get – pozycje autobusów i tramwajów na żywo
+  // busestrams_get – live bus and tram positions
   vehicles: "f2e5503e-927d-4ad3-9500-4ab9e55deb59",
-  // dbtimetable_get – linie zatrzymujące się na słupku
+  // dbtimetable_get – lines that stop at a stop post
   linesAtStop: "88cd555f-6f31-43ca-9de4-66c479ad5942",
-  // dbtimetable_get – rozkład jazdy linii na słupku
+  // dbtimetable_get – timetable of a line at a stop post
   timetable: "e923fa0e-d96c-43f9-ae6e-60518c9f3238",
 } as const;
 
-// Obszar, w którym muszą leżeć poprawne pozycje (Warszawa z okolicami).
-// API czasem zwraca pojazdy z zerowymi lub zupełnie błędnymi współrzędnymi.
+// Area where valid positions must lie (Warsaw and its surroundings).
+// The API sometimes returns vehicles with zero or completely wrong coordinates.
 const WARSAW_BOUNDS = { minLat: 51.9, maxLat: 52.6, minLon: 20.6, maxLon: 21.6 };
 
 export class WarsawApiError extends Error {
@@ -48,10 +48,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type QueryParams = Record<string, string | number | undefined>;
 
 /**
- * Wywołuje akcję API Warszawy i zwraca pole `result`.
- * API zgłasza błędy jako tekst w `result` (np. "Błędny apikey lub jego brak"),
- * a busestrams_get potrafi losowo odpowiedzieć "Błędna metoda lub parametry
- * wywołania" – wtedy ponawiamy zapytanie.
+ * Calls a Warsaw API action and returns the `result` field.
+ * The API reports errors as text in `result` (e.g. "Błędny apikey lub jego brak" –
+ * invalid or missing apikey),
+ * and busestrams_get can randomly respond with "Błędna metoda lub parametry
+ * wywołania" (invalid method or call parameters) – in that case we retry the request.
  */
 async function callApi<T>(action: string, params: QueryParams, retries = 2): Promise<T> {
   const url = new URL(`${BASE_URL}/${action}/`);
@@ -102,7 +103,7 @@ async function callApi<T>(action: string, params: QueryParams, retries = 2): Pro
   throw new WarsawApiError(`API Warszawy nie odpowiedziało poprawnie: ${lastError}`);
 }
 
-// --- Prosty cache w pamięci serwera, żeby nie zasypywać API zapytaniami ---
+// --- Simple in-memory server cache, so we don't flood the API with requests ---
 
 const cache = new Map<string, { expires: number; value: Promise<unknown> }>();
 
@@ -112,15 +113,15 @@ function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<
   if (hit && hit.expires > now) return hit.value as Promise<T>;
   const value = load();
   cache.set(key, { expires: now + ttlMs, value });
-  // nieudanych zapytań nie trzymamy w cache
+  // failed requests are not kept in the cache
   value.catch(() => cache.delete(key));
   return value;
 }
 
-// Odpowiedzi dbtimetable_get to listy par klucz–wartość, ale w dwóch postaciach:
-//   linie na przystanku: [{ values: [{ key: "linia", value: "523" }] }, ...]
-//   rozkład jazdy:       [[{ key: "brygada", value: "3" }, { key: "czas", value: "17:31:00" }, ...], ...]
-// (wartość bywa też JSON-owym null)
+// dbtimetable_get responses are lists of key–value pairs, but in two shapes:
+//   lines at a stop: [{ values: [{ key: "linia", value: "523" }] }, ...]
+//   timetable:       [[{ key: "brygada", value: "3" }, { key: "czas", value: "17:31:00" }, ...], ...]
+// (a value can also be a JSON null)
 type KeyValue = { key: string; value: string | null };
 type KeyValueRecord = KeyValue[] | { values?: KeyValue[] };
 
@@ -138,7 +139,7 @@ function toObject(record: KeyValueRecord): Record<string, string | null> {
   return out;
 }
 
-// --- Czas: API podaje czas lokalny Warszawy bez strefy, np. "2026-11-07 17:15:32" ---
+// --- Time: the API returns Warsaw local time without a time zone, e.g. "2026-11-07 17:15:32" ---
 
 function timeZoneOffsetMs(date: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -165,7 +166,7 @@ export function parseWarsawDateTime(text: string): Date | null {
   return new Date(naiveUtc - offset);
 }
 
-/** Bieżąca godzina w Warszawie w minutach od północy. */
+/** Current time in Warsaw, in minutes since midnight. */
 function warsawMinutesNow(now = new Date()): number {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Warsaw",
@@ -177,7 +178,7 @@ function warsawMinutesNow(now = new Date()): number {
   return get("hour") * 60 + get("minute");
 }
 
-// ======================= Pozycje pojazdów na żywo =======================
+// ======================== Live vehicle positions ========================
 
 export type VehicleType = "bus" | "tram";
 
@@ -188,9 +189,9 @@ export type Vehicle = {
   vehicleNumber: string;
   lat: number;
   lon: number;
-  /** Czas ostatniego zgłoszenia pozycji (ISO, UTC) */
+  /** Time of the last reported position (ISO, UTC) */
   time: string;
-  /** Ile sekund temu pojazd zgłosił pozycję */
+  /** How many seconds ago the vehicle reported its position */
   ageSeconds: number;
 };
 
@@ -205,8 +206,8 @@ type RawVehicle = {
 
 const VEHICLE_TYPE_CODE: Record<VehicleType, number> = { bus: 1, tram: 2 };
 
-// API ignoruje parametr line i zawsze zwraca wszystkie pojazdy danego typu,
-// więc pobieramy całość (raz na 10 s) i filtrujemy po naszej stronie.
+// The API ignores the line parameter and always returns all vehicles of the given type,
+// so we fetch everything (once every 10 s) and filter on our side.
 function fetchRawVehicles(type: VehicleType): Promise<RawVehicle[]> {
   return cached(`vehicles:${type}`, 10_000, () =>
     callApi<RawVehicle[]>("busestrams_get", {
@@ -217,11 +218,11 @@ function fetchRawVehicles(type: VehicleType): Promise<RawVehicle[]> {
 }
 
 export type VehicleQuery = {
-  /** bez typu = autobusy i tramwaje */
+  /** no type = buses and trams */
   type?: VehicleType;
   line?: string;
   brigade?: string;
-  /** odrzuć pozycje starsze niż tyle sekund (domyślnie 5 minut) */
+  /** discard positions older than this many seconds (default 5 minutes) */
   maxAgeSeconds?: number;
 };
 
@@ -266,7 +267,7 @@ export async function getVehicles(query: VehicleQuery = {}, now = new Date()): P
   return vehicles;
 }
 
-// ============================ Rozkład jazdy =============================
+// ============================== Timetable ===============================
 
 export function getLinesAtStop(stopId: string, stopNr: string): Promise<string[]> {
   return cached(`lines:${stopId}:${stopNr}`, 60 * 60 * 1000, async () => {
@@ -287,7 +288,7 @@ export type ScheduledRide = {
   brigade: string;
   direction: string;
   route: string;
-  /** godzina z rozkładu "HH:MM:SS"; po północy może być np. "24:15:00" */
+  /** scheduled time "HH:MM:SS"; after midnight it can be e.g. "24:15:00" */
   time: string;
 };
 
@@ -319,12 +320,12 @@ function timeToMinutes(time: string): number | null {
 }
 
 export type Departure = ScheduledRide & {
-  /** godzina do wyświetlenia "HH:MM" (24:15 → 00:15) */
+  /** time to display "HH:MM" (24:15 → 00:15) */
   displayTime: string;
   minutesFromNow: number;
 };
 
-/** Najbliższe odjazdy ze słupka (wszystkie linie albo jedna wybrana). */
+/** Next departures from a stop post (all lines or one selected line). */
 export async function getDepartures(
   stopId: string,
   stopNr: string,
@@ -338,7 +339,7 @@ export async function getDepartures(
   for (const ride of timetables.flat()) {
     const t = timeToMinutes(ride.time);
     if (t === null) continue;
-    // kursy po północy mają w rozkładzie godziny 24:xx, 25:xx...
+    // rides after midnight are listed in the timetable as 24:xx, 25:xx...
     const candidates = nowMin < 4 * 60 ? [t - 24 * 60, t] : [t];
     const diff = candidates.map((c) => c - nowMin).find((d) => d >= 0);
     if (diff === undefined) continue;

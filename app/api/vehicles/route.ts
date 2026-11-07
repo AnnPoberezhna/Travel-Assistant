@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getVehicles, type VehicleType } from "@/app/lib/warsawApi";
 import { warsawApiErrorResponse } from "@/app/lib/apiErrors";
 
-// GET /api/vehicles – pozycje autobusów i tramwajów na żywo (API Warszawy)
-//   ?type=bus | tram        (domyślnie oba)
-//   ?line=523               (opcjonalnie numer linii)
-//   ?brigade=3              (opcjonalnie brygada)
-//   ?maxAge=300             (odrzuć pozycje starsze niż N sekund, 0 = bez limitu)
+// GET /api/vehicles – live bus and tram positions (Warsaw API)
+//   ?type=bus | tram        (both by default)
+//   ?line=523               (optional line number)
+//   ?brigade=3              (optional brigade)
+//   ?maxAge=300             (discard positions older than N seconds, 0 = no limit)
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
 
