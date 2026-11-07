@@ -10,6 +10,7 @@ import L from "leaflet";
 import { Circle, CircleMarker, MapContainer, Marker, Pane, Popup, TileLayer, ZoomControl } from "react-leaflet";
 import { Bus, ChevronDown, ChevronUp, LocateFixed, MapPin, RefreshCw, Route, TramFront, X } from "lucide-react";
 import type { Vehicle, VehicleType } from "@/app/lib/warsawApi";
+import type { LiveDeparture } from "@/app/lib/liveRoutes";
 import "leaflet/dist/leaflet.css";
 import "./map.css";
 
@@ -63,6 +64,41 @@ const formatTime = (iso: string) =>
 
 const vehicleKey = (v: Vehicle) => `${v.type}-${v.vehicleNumber}`;
 
+// The map remembers its view, the chosen stops and the layer toggles for this browser tab,
+// so going to the search page and back doesn't lose them.
+const STORAGE_KEY = "travel-assistant:map";
+type SavedMapState = {
+  center?: L.LatLngTuple;
+  zoom?: number;
+  from?: Stop | null;
+  to?: Stop | null;
+  showStops?: boolean;
+  showBuses?: boolean;
+  showTrams?: boolean;
+};
+
+const isStop = (s: unknown): s is Stop =>
+  !!s && typeof s === "object" && ["id", "lat", "lon"].every((k) => typeof (s as Record<string, unknown>)[k] === "number");
+
+function loadSavedState(): SavedMapState {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null");
+    if (!raw || typeof raw !== "object") return {};
+    const okCenter = Array.isArray(raw.center) && raw.center.length === 2 && raw.center.every((n: unknown) => typeof n === "number");
+    return {
+      center: okCenter ? raw.center : undefined,
+      zoom: typeof raw.zoom === "number" ? raw.zoom : undefined,
+      from: isStop(raw.from) ? raw.from : null,
+      to: isStop(raw.to) ? raw.to : null,
+      showStops: typeof raw.showStops === "boolean" ? raw.showStops : undefined,
+      showBuses: typeof raw.showBuses === "boolean" ? raw.showBuses : undefined,
+      showTrams: typeof raw.showTrams === "boolean" ? raw.showTrams : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 // "523, 17 n01" -> ["523", "17", "N01"]
 const parseLines = (text: string) =>
   text.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
@@ -96,11 +132,12 @@ export default function TransitMap() {
   const [map, setMap] = useState<L.Map | null>(null);
   const [view, setView] = useState<MapView | null>(null);
   const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia("(max-width: 640px)").matches);
+  const [saved] = useState(loadSavedState);
 
   // Layers and filters
-  const [showStops, setShowStops] = useState(true);
-  const [showBuses, setShowBuses] = useState(true);
-  const [showTrams, setShowTrams] = useState(true);
+  const [showStops, setShowStops] = useState(saved.showStops ?? true);
+  const [showBuses, setShowBuses] = useState(saved.showBuses ?? true);
+  const [showTrams, setShowTrams] = useState(saved.showTrams ?? true);
   const [lineInput, setLineInput] = useState("");
   const [lineFilter, setLineFilter] = useState("");
 
@@ -120,11 +157,13 @@ export default function TransitMap() {
   const selectedVehicle = useRef<string | null>(null);
 
   // Route planning and location
-  const [from, setFrom] = useState<Stop | null>(null);
-  const [to, setTo] = useState<Stop | null>(null);
+  const [from, setFrom] = useState<Stop | null>(saved.from ?? null);
+  const [to, setTo] = useState<Stop | null>(saved.to ?? null);
   const [reachable, setReachable] = useState<{ from: number; stops: Stop[]; ids: Set<number> } | null>(null);
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
   const [routeCheck, setRouteCheck] = useState<{ key: string; result: RouteCheck } | null>(null);
+  // Next real departures for the chosen pair (null = no live data, e.g. not a Warsaw stop)
+  const [liveCheck, setLiveCheck] = useState<{ key: string; departures: LiveDeparture[] | null } | null>(null);
   const [myLocation, setMyLocation] = useState<MyLocation | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -139,6 +178,18 @@ export default function TransitMap() {
       map.off("moveend", update);
     };
   }, [map]);
+
+  // Remember the view, chosen stops and layers for this tab (see STORAGE_KEY)
+  useEffect(() => {
+    if (!view) return;
+    const center = view.bounds.getCenter();
+    const state: SavedMapState = { center: [center.lat, center.lng], zoom: view.zoom, from, to, showStops, showBuses, showTrams };
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // storage can be unavailable (private mode, blocked site data) – the map works without it
+    }
+  }, [view, from, to, showStops, showBuses, showTrams]);
 
   // Apply the line filter shortly after the user stops typing
   useEffect(() => {
@@ -252,6 +303,17 @@ export default function TransitMap() {
       return Array.isArray(json?.results) ? json.results.length : 0;
     };
 
+    // In parallel: today's real departures from the Warsaw API for the direct lines
+    fetch(`/api/routeSearch/live?startId=${from.id}&endId=${to.id}&limit=3`, { signal: controller.signal })
+      .then(async (res) => {
+        const json = await res.json().catch(() => null);
+        const usable = res.ok && json?.available && json.lines?.length > 0;
+        setLiveCheck({ key, departures: usable ? json.departures : null });
+      })
+      .catch((e: Error) => {
+        if (e.name !== "AbortError") setLiveCheck({ key, departures: null });
+      });
+
     (async () => {
       try {
         const direct = await countRoutes(false);
@@ -283,6 +345,7 @@ export default function TransitMap() {
       : { status: "checking" }
     : null;
   const canFindRoute = routeResult?.status === "found" || routeResult?.status === "error";
+  const liveDepartures = routeKey && liveCheck?.key === routeKey ? liveCheck.departures : null;
 
   // Geolocation results
   useEffect(() => {
@@ -447,8 +510,8 @@ export default function TransitMap() {
     <div className="transit-map" style={{ position: "relative", flex: 1, width: "100%", height: "100%", isolation: "isolate" }}>
       <MapContainer
         ref={setMap}
-        center={WARSAW_CENTER}
-        zoom={DEFAULT_ZOOM}
+        center={saved.center ?? WARSAW_CENTER}
+        zoom={saved.zoom ?? DEFAULT_ZOOM}
         zoomControl={false}
         preferCanvas
         style={{ width: "100%", height: "100%" }}
@@ -679,6 +742,7 @@ export default function TransitMap() {
             )}
             <RouteStopRow badge="B" color="#ef6c00" label="To" stop={to} onShow={flyToStop} onClear={() => setTo(null)} />
             {routeResult && <RouteCheckNote result={routeResult} />}
+            {liveDepartures && <LiveDeparturesNote departures={liveDepartures} />}
             <button
               type="button"
               onClick={findRoute}
@@ -746,6 +810,38 @@ function RouteCheckNote({ result }: { result: RouteCheck }) {
     case "error":
       return <PanelNote color="#c62828">⚠️ Couldn&apos;t check connections: {result.message}</PanelNote>;
   }
+}
+
+function LiveDeparturesNote({ departures }: { departures: LiveDeparture[] }) {
+  if (departures.length === 0) {
+    return <PanelNote>No more direct departures in the next hours.</PanelNote>;
+  }
+  return (
+    <div style={{ margin: "4px 0 4px 36px" }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#2e7d32", letterSpacing: 0.5, marginBottom: 4 }}>NEXT DEPARTURES (LIVE)</div>
+      {departures.map((d) => (
+        <div key={`${d.line}-${d.brigade}-${d.departureTime}`} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "#37474f", padding: "2px 0" }}>
+          <span
+            style={{
+              flexShrink: 0,
+              padding: "1px 6px",
+              borderRadius: 6,
+              color: "#fff",
+              fontWeight: 800,
+              background: d.type === "TRAM" ? VEHICLE_COLOR.tram : VEHICLE_COLOR.bus,
+            }}
+          >
+            {d.line}
+          </span>
+          <strong>{d.departureTime}</strong>
+          <span style={{ color: d.minutesFromNow <= 5 ? "#e65100" : "#607d8b" }}>
+            ({d.minutesFromNow <= 0 ? "now" : `in ${d.minutesFromNow} min`})
+          </span>
+          <span style={{ color: "#78909c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>→ arr. ~{d.arrivalTime}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {

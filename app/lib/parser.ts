@@ -82,29 +82,52 @@ export async function findStopCandidates(text: string, limit = 6): Promise<any[]
       // compare unaccented lower(nazwa) to unaccented parameter to handle diacritics
       clauses.push(`lower(unaccent(nazwa)) LIKE lower(unaccent($${i + 1}))`);
     });
-    const sql = `SELECT id, nazwa, adres FROM "Przystanek" WHERE ${clauses.join(" AND ")} LIMIT ${limit}`;
+    // Best matches first: exact name, then names starting with the text, then the rest (shorter first).
+    // Without this, "centrum" could return "Wieliszew Centrum" before "Centrum".
+    params.push(cleaned);
+    const full = `lower(unaccent($${params.length}))`;
+    // Warsaw stops have several posts with the same name, so the post number is added ("Centrum 01")
+    const sql = `SELECT id, CASE WHEN "ztmStopNr" IS NOT NULL THEN nazwa || ' ' || "ztmStopNr" ELSE nazwa END AS nazwa, adres
+      FROM "Przystanek" WHERE ${clauses.join(" AND ")}
+      ORDER BY CASE WHEN lower(unaccent(nazwa)) = ${full} THEN 0 WHEN lower(unaccent(nazwa)) LIKE ${full} || '%' THEN 1 ELSE 2 END,
+        length(nazwa), nazwa, "ztmStopNr" NULLS LAST
+      LIMIT ${limit}`;
     // $queryRawUnsafe with parameters
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     const rows = (await prisma.$queryRawUnsafe(sql, ...params)) as any[];
     return rows;
   } catch (e) {
-    // DB might not support unaccent or raw queries in environment — fallback to JS filtering
-    const all = await prisma.przystanek.findMany();
+    // DB might not support unaccent (the extension isn't installed by default) — fallback to JS filtering
+    const all = await prisma.przystanek.findMany({ select: { id: true, nazwa: true, adres: true, ztmStopNr: true } });
+    // Same normalization as the query text: no accents, lower case, "ł" -> "l" (NFD doesn't split "ł")
     const strip = (s: string) =>
       s
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase();
+        .toLowerCase()
+        .replace(/ł/g, "l");
 
-    const tokensNorm = tokens.map(t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+    const tokensNorm = tokens.map(strip);
+    const fullNorm = strip(cleaned);
+    // Best matches first: exact name, then names starting with the text, then the rest (shorter first)
+    const rank = (name: string) => (name === fullNorm ? 0 : name.startsWith(fullNorm) ? 1 : 2);
 
-    const filtered = all.filter((p) => {
-      const name = strip(p.nazwa || "");
-      return tokensNorm.every(t => name.includes(t));
-    });
-
-    return filtered.slice(0, limit);
+    return all
+      .map((p) => ({ p, name: strip(p.nazwa || "") }))
+      .filter(({ name }) => tokensNorm.every((t) => name.includes(t)))
+      .sort(
+        (a, b) =>
+          rank(a.name) - rank(b.name) ||
+          a.name.length - b.name.length ||
+          a.name.localeCompare(b.name) ||
+          // numbered bus/tram posts before stops without a post number (metro)
+          Number(!a.p.ztmStopNr) - Number(!b.p.ztmStopNr) ||
+          (a.p.ztmStopNr ?? "").localeCompare(b.p.ztmStopNr ?? "")
+      )
+      .slice(0, limit)
+      // Warsaw stops have several posts with the same name, so the post number is added ("Centrum 01")
+      .map(({ p }) => ({ id: p.id, nazwa: p.ztmStopNr ? `${p.nazwa} ${p.ztmStopNr}` : p.nazwa, adres: p.adres }));
   }
 }
 

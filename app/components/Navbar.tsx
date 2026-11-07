@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Button, buttonVariants } from './ui/button';
-import { HandMetal } from 'lucide-react';
+import { HandMetal, Map as MapIcon } from 'lucide-react';
 import { authOptions } from '../lib/auth';
 import { getServerSession } from 'next-auth';
 import { signOut } from 'next-auth/react';
@@ -16,13 +16,19 @@ const Navbar = async () => {
         <Link href='/'>
           <HandMetal />
         </Link>
-        {session?.user ? (
-          <UserAccountnav />
-        ) : (
-            <Link className={buttonVariants()} href='/sign-in'>
-              Sign in
-            </Link>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Link className={buttonVariants({ variant: 'ghost' })} href='/map' style={{ gap: 6 }}>
+            <MapIcon size={18} />
+            Map
+          </Link>
+          {session?.user ? (
+            <UserAccountnav />
+          ) : (
+              <Link className={buttonVariants()} href='/sign-in'>
+                Sign in
+              </Link>
+          )}
+        </div>
       </div>
     </div>
   );

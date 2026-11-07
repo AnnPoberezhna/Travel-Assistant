@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Search, MapPin, ArrowRight, Star, Clock, Repeat, Train, Bus, Map as MapIcon } from "lucide-react";
 import VoiceInput from "./components/VoiceInput";
+import LiveDepartures from "./components/LiveDepartures";
 
 export default function Home() {
   const [query, setQuery] = useState("wrocław -> katowice");
@@ -310,6 +311,8 @@ export default function Home() {
                 {savingFav ? "SAVING..." : "FAVOURITE"}
               </button>
             </div>
+
+            {Array.isArray(pairRoutes) && <LiveDepartures fromId={fromId} toId={toId} />}
 
             {Array.isArray(pairRoutes) && pairRoutes.length > 0 && (
               <div>
