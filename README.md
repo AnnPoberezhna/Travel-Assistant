@@ -60,17 +60,30 @@ pnpm install
 
 ### 3. Environment Setup
 
-Create a `.env` file in the root directory:
+Copy `.env.example` to `.env` in the root directory and fill in the values:
 
 ```env
 # Database
 DATABASE_URL="postgresql://username:password@localhost:5432/travel_assistant"
 
 # NextAuth
-NEXTAUTH_URL="http://localhost:####"
+NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="your-secret-key-here"
 # Generate with: openssl rand -base64 32
+
+# Warsaw city API (live vehicle positions, stops, timetables)
+WARSAW_API_KEY="your-warsaw-api-key"
 ```
+
+#### Warsaw API key
+
+Live data comes from the open API of the City of Warsaw – https://api.um.warszawa.pl/.
+
+1. Register an account on https://api.um.warszawa.pl/ and confirm your e-mail.
+2. Log in and copy your API key from your account page.
+3. Paste it into `.env` as `WARSAW_API_KEY` and restart `npm run dev`.
+
+Never commit the key – `.env` is listed in `.gitignore`.
 
 ### 4. Database Setup
 
@@ -204,6 +217,18 @@ The app uses NextAuth.js with credential-based authentication:
 ### Public Routes
 - `POST /api/auth/signin` - User login
 - `POST /api/auth/signup` - User registration
+
+### Warsaw Live Data (api.um.warszawa.pl)
+Require `WARSAW_API_KEY` in `.env`. Responses are cached on the server for a short time.
+
+- `GET /api/vehicles` - Live bus and tram positions
+  - `type=bus|tram|all`, `line=523`, `brigade=3`, `maxAge=300` (skip positions older than N seconds, `0` = no limit)
+  - Example: `/api/vehicles?type=bus&line=523`
+  - The Warsaw API ignores its own `line` filter, so filtering is done on our server. Some vehicles report stale positions (hours or days old) – they are skipped by default.
+- `GET /api/ztm/departures` - Next departures from a stop, based on the timetable
+  - `stopId=7009&stopNr=01` (stop group number + post number), optional `line=523`, `limit=20`
+
+Note: the stop list with coordinates and stop search by name are no longer served by api.um.warszawa.pl, so stops still come from the database (GTFS import).
 
 ### Protected Routes
 - `GET /api/routeSearch/find` - Search for routes
