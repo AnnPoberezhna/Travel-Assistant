@@ -235,6 +235,8 @@ Require `WARSAW_API_KEY` in `.env`. Responses are cached on the server for a sho
 - `GET /api/routeSearch/live?startId=ID&endId=ID` - Next real departures of the lines that go directly between two stops (database ids), with estimated arrival times
   - Lines and ride times come from the imported GTFS data; departure times from today's Warsaw timetable, filtered by route variant so buses that don't reach the destination are skipped
   - Returns `available: false` for stops without a ZTM code (outside Warsaw, metro)
+- `GET /api/routeSearch/path?startId=ID&endId=ID` - The stops (with coordinates) a route passes, used to draw it on the map
+  - `kind: "direct"` with the alternative paths (lines sharing a path are grouped), `kind: "transfer"` with two legs and the transfer stop, or `kind: "none"`
 - `GET /api/ztm/departures` - Next departures from a stop, based on the timetable
   - `stopId=7009&stopNr=01` (stop group number + post number), optional `line=523`, `limit=20`
 
@@ -281,7 +283,7 @@ npm run start
 
 - **Home Page** (`/`) - Main search interface. Enter query as "from -> to" or use voice input. View direct and transfer routes with times and operator info. Save favorite routes. For Warsaw stops, a **Next departures (LIVE)** card shows the real upcoming departures for today with estimated arrival times (also on `/search`).
 
-- **Live Map** (`/map`) - Opened with the **OPEN MAP** button on the home page. Leaflet + OpenStreetMap map showing stops from the database and live Warsaw buses (blue) and trams (red), refreshed every 15 seconds. Filter vehicles by line (e.g. `523, 17`) – the map zooms to them. Zoom in to see line numbers on the vehicles. Click a stop and choose **Start here** – stops with a direct connection from it turn green. Choose **End here** on another stop and the panel tells you if there are direct connections, connections with one transfer, or none, plus the next live departures in Warsaw; **FIND ROUTE** then opens the search results. The locate button shows your current position. Live vehicles need `WARSAW_API_KEY` in `.env`.
+- **Live Map** (`/map`) - Opened with the **OPEN MAP** button on the home page. Leaflet + OpenStreetMap map showing stops from the database and live Warsaw buses (blue) and trams (red), refreshed every 15 seconds. Filter vehicles by line (e.g. `523, 17`) – the map zooms to them. Zoom in to see line numbers on the vehicles. Click a stop and choose **Start here** – stops with a direct connection from it turn green. Choose **End here** on another stop and the panel tells you if there are direct connections, connections with one transfer, or none, plus the next live departures in Warsaw. The route is drawn on the map in the line's colour (blue bus, red tram) with its stops and line numbers; a route with a transfer is drawn as two legs with a **Change here** marker. **FIND ROUTE** then opens the search results. The locate button shows your current position. Live vehicles need `WARSAW_API_KEY` in `.env`.
 
 - **Sign In** (`/auth/sign-in`) - User login with email and password. Creates JWT session for dashboard access.
 

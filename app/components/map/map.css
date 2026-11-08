@@ -37,6 +37,29 @@
 .stop-pin--from { background: #2e7d32; }
 .stop-pin--to { background: #ef6c00; }
 
+/* Labels on the drawn route: line numbers and the transfer point.
+   The marker itself has no size; the label is centred on it with a transform. */
+.route-label-anchor { background: none; border: none; }
+.route-label,
+.route-transfer {
+  position: absolute;
+  padding: 3px 8px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.route-label { transform: translate(-50%, -50%); color: #fff; }
+.route-label--BUS { background: #1e88e5; }
+.route-label--TRAM { background: #e53935; }
+.route-label--RAIL { background: #6d4c41; }
+.route-label--OTHER { background: #546e7a; }
+/* Below the stop, so it doesn't cover the label of a short first leg (which sits above) */
+.route-transfer { transform: translate(-50%, 55%); background: #fbc02d; color: #3e2723; }
+
 /* "You are here" dot */
 .my-location-dot {
   border: 3px solid #fff;

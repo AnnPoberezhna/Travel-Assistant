@@ -4,13 +4,14 @@
 // and picking a start/destination stop to plan a route on the search page.
 // Leaflet needs `window`, so this component is loaded with ssr: false (see app/(dashboard)/map/page.tsx).
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import L from "leaflet";
-import { Circle, CircleMarker, MapContainer, Marker, Pane, Popup, TileLayer, ZoomControl } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Pane, Polyline, Popup, TileLayer, ZoomControl } from "react-leaflet";
 import { Bus, ChevronDown, ChevronUp, LocateFixed, MapPin, RefreshCw, Route, TramFront, X } from "lucide-react";
 import type { Vehicle, VehicleType } from "@/app/lib/warsawApi";
 import type { LiveDeparture } from "@/app/lib/liveRoutes";
+import type { RouteLeg, RoutePaths, TransportType } from "@/app/lib/routePaths";
 import "leaflet/dist/leaflet.css";
 import "./map.css";
 
@@ -49,6 +50,36 @@ const STOP_STYLE: L.PathOptions = { color: STOP_COLOR, weight: 2, fillColor: "#f
 const STOP_REACHABLE_STYLE: L.PathOptions = { color: "#2e7d32", weight: 3, fillColor: "#a5d6a7", fillOpacity: 1 };
 const STOP_DIMMED_STYLE: L.PathOptions = { color: STOP_COLOR, weight: 2, opacity: 0.35, fillColor: "#fff", fillOpacity: 0.5 };
 const ACCURACY_STYLE: L.PathOptions = { color: "#42a5f5", weight: 1, fillColor: "#42a5f5", fillOpacity: 0.12 };
+
+// Route drawn between the chosen stops (see app/lib/routePaths.ts): a coloured line with a white
+// outline, small dots for the stops in between, line-number labels and a "Change here" marker.
+const ROUTE_COLOR: Record<TransportType, string> = { BUS: VEHICLE_COLOR.bus, TRAM: VEHICLE_COLOR.tram, RAIL: "#6d4c41", OTHER: "#546e7a" };
+const ROUTE_TYPES = Object.keys(ROUTE_COLOR) as TransportType[];
+const ROUTE_CASING_STYLE: L.PathOptions = { color: "#fff", weight: 11, opacity: 0.95, lineCap: "round", lineJoin: "round" };
+const ROUTE_LINE_STYLE = Object.fromEntries(
+  ROUTE_TYPES.map((t) => [t, { color: ROUTE_COLOR[t], weight: 6, opacity: 1, lineCap: "round", lineJoin: "round" }])
+) as Record<TransportType, L.PathOptions>;
+const ROUTE_STOP_STYLE = Object.fromEntries(
+  ROUTE_TYPES.map((t) => [t, { color: ROUTE_COLOR[t], weight: 3, fillColor: "#fff", fillOpacity: 1 }])
+) as Record<TransportType, L.PathOptions>;
+const TRANSFER_STOP_STYLE: L.PathOptions = { color: "#fff", weight: 3, fillColor: "#fbc02d", fillOpacity: 1 };
+const TRANSFER_ICON = L.divIcon({ className: "route-label-anchor", html: '<span class="route-transfer">⇄ Change here</span>', iconSize: [0, 0] });
+
+const routeLabelIcons = new Map<string, L.DivIcon>();
+function routeLabelIcon(leg: RouteLeg): L.DivIcon {
+  const text = leg.lines.join(" · ");
+  const key = `${leg.type}|${text}`;
+  let icon = routeLabelIcons.get(key);
+  if (!icon) {
+    icon = L.divIcon({
+      className: "route-label-anchor",
+      html: `<span class="route-label route-label--${leg.type}">${escapeHtml(text)}</span>`,
+      iconSize: [0, 0],
+    });
+    routeLabelIcons.set(key, icon);
+  }
+  return icon;
+}
 
 const STOP_PIN: Record<"from" | "to", L.DivIcon> = {
   from: L.divIcon({ className: "stop-pin stop-pin--from", html: "A", iconSize: [26, 26], iconAnchor: [13, 13] }),
@@ -164,6 +195,8 @@ export default function TransitMap() {
   const [routeCheck, setRouteCheck] = useState<{ key: string; result: RouteCheck } | null>(null);
   // Next real departures for the chosen pair (null = no live data, e.g. not a Warsaw stop)
   const [liveCheck, setLiveCheck] = useState<{ key: string; departures: LiveDeparture[] | null } | null>(null);
+  // The stops the route passes, for drawing it (null = couldn't load)
+  const [routePath, setRoutePath] = useState<{ key: string; data: RoutePaths | null } | null>(null);
   const [myLocation, setMyLocation] = useState<MyLocation | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -314,6 +347,16 @@ export default function TransitMap() {
         if (e.name !== "AbortError") setLiveCheck({ key, departures: null });
       });
 
+    // ...and the stops the route passes, to draw it on the map
+    fetch(`/api/routeSearch/path?startId=${from.id}&endId=${to.id}`, { signal: controller.signal })
+      .then(async (res) => {
+        const json = await res.json().catch(() => null);
+        setRoutePath({ key, data: res.ok ? json : null });
+      })
+      .catch((e: Error) => {
+        if (e.name !== "AbortError") setRoutePath({ key, data: null });
+      });
+
     (async () => {
       try {
         const direct = await countRoutes(false);
@@ -346,6 +389,26 @@ export default function TransitMap() {
     : null;
   const canFindRoute = routeResult?.status === "found" || routeResult?.status === "error";
   const liveDepartures = routeKey && liveCheck?.key === routeKey ? liveCheck.departures : null;
+
+  const currentRoute = routeKey && routePath?.key === routeKey ? routePath.data : null;
+  const routeLegs = useMemo<RouteLeg[]>(() => {
+    if (currentRoute?.kind === "direct") return currentRoute.options;
+    if (currentRoute?.kind === "transfer") return currentRoute.legs;
+    return [];
+  }, [currentRoute]);
+
+  // Zoom to a newly drawn route once (afterwards the user can move the map freely)
+  const fittedRouteKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!map || !routeKey || routeLegs.length === 0 || fittedRouteKey.current === routeKey) return;
+    fittedRouteKey.current = routeKey;
+    const points = routeLegs.flatMap((leg) => leg.stops.map((s) => [s.lat, s.lon] as L.LatLngTuple));
+    map.fitBounds(L.latLngBounds(points), {
+      paddingTopLeft: [panelOpen ? 360 : 40, 60],
+      paddingBottomRight: [70, 60],
+      maxZoom: 16,
+    });
+  }, [map, routeKey, routeLegs, panelOpen]);
 
   // Geolocation results
   useEffect(() => {
@@ -528,6 +591,43 @@ export default function TransitMap() {
             <Circle center={[myLocation.lat, myLocation.lon]} radius={myLocation.accuracy} pathOptions={ACCURACY_STYLE} interactive={false} />
             <Marker position={[myLocation.lat, myLocation.lon]} icon={MY_LOCATION_ICON} interactive={false} />
           </>
+        )}
+
+        {/* The drawn route sits under vehicles and stops, so buses can be seen driving along it.
+            The pane stays mounted: Leaflet keeps one canvas per pane name. */}
+        <Pane name="route" style={{ zIndex: 390 }}>
+          {routeLegs.map((leg, i) => {
+            const positions = leg.stops.map((s) => [s.lat, s.lon] as L.LatLngTuple);
+            return (
+              <Fragment key={`${routeKey}-leg-${i}`}>
+                <Polyline positions={positions} pathOptions={ROUTE_CASING_STYLE} interactive={false} />
+                <Polyline positions={positions} pathOptions={ROUTE_LINE_STYLE[leg.type]} interactive={false} />
+                {leg.stops.slice(1, -1).map((s, j) => (
+                  <CircleMarker key={`${s.id}-${j}`} center={[s.lat, s.lon]} radius={4} pathOptions={ROUTE_STOP_STYLE[leg.type]} interactive={false} />
+                ))}
+              </Fragment>
+            );
+          })}
+          {currentRoute?.kind === "transfer" && (
+            <CircleMarker
+              center={[currentRoute.transferStop.lat, currentRoute.transferStop.lon]}
+              radius={8}
+              pathOptions={TRANSFER_STOP_STYLE}
+              interactive={false}
+            />
+          )}
+        </Pane>
+        {routeLegs.map((leg, i) => {
+          const middle = leg.stops[Math.floor(leg.stops.length / 2)];
+          return <Marker key={`${routeKey}-label-${i}`} position={[middle.lat, middle.lon]} icon={routeLabelIcon(leg)} interactive={false} />;
+        })}
+        {currentRoute?.kind === "transfer" && (
+          <Marker
+            position={[currentRoute.transferStop.lat, currentRoute.transferStop.lon]}
+            icon={TRANSFER_ICON}
+            interactive={false}
+            zIndexOffset={900}
+          />
         )}
 
         {/* Stops sit above vehicle dots but below badges and pins */}
@@ -742,6 +842,7 @@ export default function TransitMap() {
             )}
             <RouteStopRow badge="B" color="#ef6c00" label="To" stop={to} onShow={flyToStop} onClear={() => setTo(null)} />
             {routeResult && <RouteCheckNote result={routeResult} />}
+            {currentRoute && currentRoute.kind !== "none" && <RouteSummaryNote route={currentRoute} />}
             {liveDepartures && <LiveDeparturesNote departures={liveDepartures} />}
             <button
               type="button"
@@ -810,6 +911,40 @@ function RouteCheckNote({ result }: { result: RouteCheck }) {
     case "error":
       return <PanelNote color="#c62828">⚠️ Couldn&apos;t check connections: {result.message}</PanelNote>;
   }
+}
+
+function LineChip({ line, type }: { line: string; type: TransportType }) {
+  return (
+    <span style={{ padding: "1px 6px", borderRadius: 6, color: "#fff", fontWeight: 800, background: ROUTE_COLOR[type] }}>{line}</span>
+  );
+}
+
+/** One line in the panel describing what is drawn on the map. */
+function RouteSummaryNote({ route }: { route: Exclude<RoutePaths, { kind: "none" }> }) {
+  const stopsAfterStart = (leg: RouteLeg) => leg.stops.length - 1;
+  const plural = (n: number) => `${n} ${n === 1 ? "stop" : "stops"}`;
+  return (
+    <div style={{ margin: "2px 0 6px 36px", fontSize: 12, lineHeight: 1.9, color: "#37474f" }}>
+      <span style={{ fontWeight: 800, color: "#1565c0" }}>On the map: </span>
+      {route.kind === "direct" ? (
+        <>
+          {route.options[0].lines.map((l) => (
+            <Fragment key={l}>
+              <LineChip line={l} type={route.options[0].type} />{" "}
+            </Fragment>
+          ))}
+          · {plural(stopsAfterStart(route.options[0]))}
+          {route.options.length > 1 && ` (+${route.options.length - 1} other ${route.options.length === 2 ? "path" : "paths"})`}
+        </>
+      ) : (
+        <>
+          <LineChip line={route.legs[0].lines[0]} type={route.legs[0].type} /> {plural(stopsAfterStart(route.legs[0]))} → change at{" "}
+          <strong>{route.transferStop.name}</strong> → <LineChip line={route.legs[1].lines[0]} type={route.legs[1].type} />{" "}
+          {plural(stopsAfterStart(route.legs[1]))}
+        </>
+      )}
+    </div>
+  );
 }
 
 function LiveDeparturesNote({ departures }: { departures: LiveDeparture[] }) {
