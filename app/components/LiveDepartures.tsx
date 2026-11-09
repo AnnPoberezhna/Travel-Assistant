@@ -5,7 +5,8 @@
 // Renders nothing for stops outside Warsaw or when no line connects them directly.
 
 import { useEffect, useState } from "react";
-import { Bus, Clock, TrainFront, TramFront } from "lucide-react";
+import Link from "next/link";
+import { Bus, Clock, Radar, TrainFront, TramFront } from "lucide-react";
 import type { LiveDeparture } from "@/app/lib/liveRoutes";
 
 type LiveResponse =
@@ -114,6 +115,21 @@ export default function LiveDepartures({ fromId, toId }: { fromId: number | null
                     {d.departureTime}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: d.minutesFromNow <= 5 ? "#e65100" : "#558b2f" }}>{formatWait(d.minutesFromNow)}</div>
+                  {/* Opens the map tracking the vehicle of this departure (line + brigade) */}
+                  <Link
+                    href={`/map?${new URLSearchParams({
+                      from: String(fromId),
+                      to: String(toId),
+                      trackLine: d.line,
+                      trackBrigade: d.brigade,
+                      trackTime: d.departureTime,
+                      trackType: d.type,
+                    })}`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4, fontSize: 12, fontWeight: 800, color: "#e65100", textDecoration: "none" }}
+                  >
+                    <Radar size={13} />
+                    Where&apos;s my {d.type === "TRAM" ? "tram" : "bus"}?
+                  </Link>
                 </div>
               </div>
             );

@@ -60,6 +60,87 @@
 /* Below the stop, so it doesn't cover the label of a short first leg (which sits above) */
 .route-transfer { transform: translate(-50%, 55%); background: #fbc02d; color: #3e2723; }
 
+/* "Where's my bus?" – the tracked vehicle: a bus/tram tile with its line number, a pulsing halo
+   and an arrow for the direction of travel. All parts are positioned around the marker point. */
+.tracked-vehicle-marker { background: none; border: none; }
+/* Glide to each new GPS position (but not during zoom, where Leaflet animates markers itself) */
+.leaflet-map-pane:not(.leaflet-zoom-anim) .tracked-vehicle-marker { transition: transform 1.5s linear; }
+
+.tracked-vehicle { position: absolute; left: 0; top: 0; }
+.tracked-vehicle__body {
+  position: absolute;
+  left: -23px;
+  top: -23px;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #fff;
+  border-radius: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+.tracked-vehicle--bus .tracked-vehicle__body { background: linear-gradient(160deg, #42a5f5 0%, #1565c0 100%); }
+.tracked-vehicle--tram .tracked-vehicle__body { background: linear-gradient(160deg, #ef5350 0%, #b71c1c 100%); }
+.tracked-vehicle__body svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tracked-vehicle__line {
+  position: absolute;
+  left: 0;
+  top: 26px;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  background: #263238;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+/* Arrow on a ring around the tile, pointing where the vehicle is heading (--heading set from JS) */
+.tracked-vehicle__heading {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: rotate(var(--heading, 0deg));
+  transition: transform 0.6s ease-out;
+}
+.has-heading .tracked-vehicle__heading { display: block; }
+.tracked-vehicle__heading::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: -41px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 13px solid #263238;
+  filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff);
+}
+.tracked-vehicle__pulse {
+  position: absolute;
+  left: -42px;
+  top: -42px;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(255, 179, 0, 0.45);
+  animation: tracked-pulse 1.8s ease-out infinite;
+}
+@keyframes tracked-pulse {
+  0% { transform: scale(0.35); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
 /* "You are here" dot */
 .my-location-dot {
   border: 3px solid #fff;
@@ -90,5 +171,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .my-location-dot,
-  .map-spin { animation: none; }
+  .map-spin,
+  .tracked-vehicle__pulse { animation: none; }
+  .leaflet-map-pane:not(.leaflet-zoom-anim) .tracked-vehicle-marker,
+  .tracked-vehicle__heading { transition: none; }
 }
