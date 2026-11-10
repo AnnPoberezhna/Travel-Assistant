@@ -8,6 +8,7 @@ const MAX_LIMIT = 5000;
 // GET /api/stops – stops with coordinates, used by the map
 //   ?bbox=minLon,minLat,maxLon,maxLat   (optional, only stops inside this area)
 //   ?limit=1000                         (optional, max number of stops, 1–5000)
+//   ?ids=12,34                          (optional, only these stops – e.g. for links that open the map)
 // The response has truncated=true when more stops match than the limit allows.
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -30,6 +31,15 @@ export async function GET(req: NextRequest) {
     const [minLon, minLat, maxLon, maxLat] = bbox;
     where.latitude = { gte: minLat, lte: maxLat };
     where.longitude = { gte: minLon, lte: maxLon };
+  }
+
+  const idsParam = params.get("ids");
+  if (idsParam) {
+    const ids = idsParam.split(",").map(Number);
+    if (ids.length === 0 || ids.length > 100 || ids.some((n) => !Number.isInteger(n) || n <= 0)) {
+      return NextResponse.json({ error: "ids must be a comma-separated list of up to 100 stop ids" }, { status: 400 });
+    }
+    where.id = { in: ids };
   }
 
   try {

@@ -29,6 +29,10 @@ export type LiveDepartures =
   | { available: false; reason: "no-ztm-stop" }
   | { available: true; lines: string[]; departures: LiveDeparture[] };
 
+// Only departures in the next hours count as "next" (just after midnight the timetable can
+// otherwise return tomorrow evening's courses, ~23 h ahead)
+const MAX_MINUTES_AHEAD = 12 * 60;
+
 const median = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)];
@@ -100,7 +104,7 @@ export async function findLiveDirectDepartures(
   const departures: LiveDeparture[] = [];
   for (const d of perLine.flatMap((r) => (r.status === "fulfilled" ? r.value : []))) {
     const ride = rides.get(`${d.line}|${d.route}`);
-    if (!ride) continue;
+    if (!ride || d.minutesFromNow > MAX_MINUTES_AHEAD) continue;
     const rideMinutes = median(ride.minutes);
     departures.push({
       line: d.line,

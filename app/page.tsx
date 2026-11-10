@@ -1,88 +1,85 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Search, MapPin, ArrowRight, Star, Clock, Repeat, Train, Bus, Map as MapIcon } from "lucide-react";
+import { Search, MapPin, ArrowLeftRight, Star, Train, Bus, Map as MapIcon } from "lucide-react";
 import VoiceInput from "./components/VoiceInput";
 import LiveDepartures from "./components/LiveDepartures";
+import StopPicker, { type StopOption } from "./components/StopPicker";
+
+/** Stops and options of the last search – the results belong to them, even if the fields change later */
+type Searched = { from: StopOption; to: StopOption; transfer: boolean };
 
 export default function Home() {
-  const [query, setQuery] = useState("wrocław -> katowice");
-  const [direct, setDirect] = useState(true);
-  const [resp, setResp] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fromId, setFromId] = useState<number | null>(null);
-  const [toId, setToId] = useState<number | null>(null);
-  const [pairRoutes, setPairRoutes] = useState<any[] | null>(null);
-  const [savingFav, setSavingFav] = useState(false);
-  const [favMessage, setFavMessage] = useState<string | null>(null);
+  // Departure and destination stops, chosen from the suggestions in the From / To fields
+  const [from, setFrom] = useState<StopOption | null>(null);
+  const [to, setTo] = useState<StopOption | null>(null);
   const [withTransfer, setWithTransfer] = useState(false);
   const [ignoreTime, setIgnoreTime] = useState(false);
+  const [searched, setSearched] = useState<Searched | null>(null);
+  const [pairRoutes, setPairRoutes] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  const [savingFav, setSavingFav] = useState(false);
+  const [favMessage, setFavMessage] = useState<string | null>(null);
 
-  const runSearch = async () => {
-    setLoading(true);
-    setError(null);
-    setResp(null);
-    setPairRoutes(null);
-    try {
-      const params = new URLSearchParams();
-      params.set("q", query);
-      if (direct) params.set("direct", "1");
-      const res = await fetch(`/api/routeSearch/parse?${params.toString()}`);
-      const json = await res.json();
-      setResp(json);
-      if (!fromId && Array.isArray(json.fromCandidates) && json.fromCandidates.length) {
-        setFromId(Number(json.fromCandidates[0].id));
-      }
-      if (!toId && Array.isArray(json.toCandidates) && json.toCandidates.length) {
-        setToId(Number(json.toCandidates[0].id));
-      }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
-    } finally {
-      setLoading(false);
+  const findRoutes = async () => {
+    if (!from || !to) {
+      setError("Please choose both the departure and the destination stop");
+      return;
     }
-  };
-
-  const runDirectForPair = async () => {
-    if (!fromId || !toId) {
-      setError("Please select both From and To stops");
+    if (from.id === to.id) {
+      setError("The departure and the destination are the same stop");
       return;
     }
     setLoading(true);
     setError(null);
     setPairRoutes(null);
+    setSearched({ from, to, transfer: withTransfer });
     try {
-      const params = new URLSearchParams();
-      params.set("startId", String(fromId));
-      params.set("endId", String(toId));
+      const params = new URLSearchParams({ startId: String(from.id), endId: String(to.id), history: "1" });
       if (withTransfer) params.set("transfers", "1");
       if (ignoreTime) params.set("ignoreTime", "1");
       const res = await fetch(`/api/routeSearch/find?${params.toString()}`);
-      if (res.ok) {
-        const json = await res.json();
-        setPairRoutes(Array.isArray(json.results) ? json.results : []);
-      } else {
-        const params2 = new URLSearchParams();
-        params2.set("q", query);
-        params2.set("direct", "1");
-        const res2 = await fetch(`/api/routeSearch/parse?${params2.toString()}`);
-        const json2 = await res2.json();
-        const match = (json2.directPairs ?? []).find((p: any) => Number(p.fromId) === fromId && Number(p.toId) === toId);
-        setPairRoutes(match ? (Array.isArray(match.routes) ? match.routes : []) : []);
-      }
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      setPairRoutes(Array.isArray(json?.results) ? json.results : []);
+    } catch (e) {
+      setError((e as Error).message ?? String(e));
+      setSearched(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const addToFavorites = async () => {
-    if (!fromId || !toId) {
-      setFavMessage("Please select both stops first");
-      return;
+  // Voice search gives "from -> to": fill both fields with the best matching stop
+  const applyVoiceQuery = async (spoken: string) => {
+    const [fromText, toText] = spoken.split("->").map((s) => s.trim());
+    if (!fromText || !toText) return;
+    setVoiceNote(null);
+    const bestStop = async (text: string): Promise<StopOption | null> => {
+      const res = await fetch(`/api/stops/search?q=${encodeURIComponent(text)}&limit=1`);
+      const json = await res.json().catch(() => null);
+      return res.ok ? (json?.stops?.[0] ?? null) : null;
+    };
+    try {
+      const [fromStop, toStop] = await Promise.all([bestStop(fromText), bestStop(toText)]);
+      if (fromStop) setFrom(fromStop);
+      if (toStop) setTo(toStop);
+      const missing = [fromStop ? null : fromText, toStop ? null : toText].filter(Boolean);
+      if (missing.length) setVoiceNote(`No stop found for: ${missing.join(", ")}`);
+    } catch {
+      setVoiceNote("Couldn't look up the spoken stops");
     }
+  };
+
+  const swapStops = () => {
+    setFrom(to);
+    setTo(from);
+  };
+
+  const addToFavorites = async () => {
+    if (!searched) return;
     setSavingFav(true);
     setFavMessage(null);
     try {
@@ -90,8 +87,8 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          przystanekStartId: fromId,
-          przystanekKoniecId: toId,
+          przystanekStartId: searched.from.id,
+          przystanekKoniecId: searched.to.id,
         }),
       });
       const json = await res.json();
@@ -100,8 +97,8 @@ export default function Home() {
       } else {
         setFavMessage(json.error || "Failed to add to favourites");
       }
-    } catch (e: any) {
-      setFavMessage(e.message || "Error saving favourite");
+    } catch (e) {
+      setFavMessage((e as Error).message || "Error saving favourite");
     } finally {
       setSavingFav(false);
       setTimeout(() => setFavMessage(null), 3000);
@@ -117,6 +114,8 @@ export default function Home() {
         @keyframes floatTicket2 { 0%, 100% { transform: translateY(0px) rotate(5deg); } 50% { transform: translateY(-40px) rotate(8deg); } }
         @keyframes floatTicket3 { 0%, 100% { transform: translateY(-20px) rotate(-3deg); } 50% { transform: translateY(-50px) rotate(-6deg); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 640px) { .stop-fields { grid-template-columns: 1fr !important; } .stop-fields .swap-stops { justify-self: center; margin-bottom: 0 !important; transform: rotate(90deg); } }
         @keyframes fadeInOut { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.4; } }
       `}} />
 
@@ -179,24 +178,29 @@ export default function Home() {
               <div style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>Voice Search</div>
             </div>
             <div style={{ background: "rgba(255, 255, 255, 0.95)", borderRadius: 12, padding: 16 }}>
-              <VoiceInput 
-                onTranscript={(text) => console.log("Voice transcript:", text)} 
-                onQuery={(pq) => {
-                  setQuery(pq);
-                  console.log("Voice query set:", pq);
-                }} 
-                placeholder="Click microphone and say: Warszawa to Gdynia" 
-              />
+              <VoiceInput onTranscript={() => {}} onQuery={applyVoiceQuery} placeholder="Click the microphone and say e.g.: Centrum Wilanów" />
             </div>
+            {voiceNote && <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, color: "#fff" }}>⚠️ {voiceNote}</div>}
           </div>
 
-          <div style={{ position: "relative", marginBottom: 24 }}>
-            <Search size={24} style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)", color: "#42a5f5" }} />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. wrocław -> katowice" style={{ width: "100%", padding: "18px 20px 18px 56px", border: "3px solid #e3f2fd", borderRadius: 16, fontSize: 18, fontWeight: 500, outline: "none", background: "#fafafa" }} />
+          <div className="stop-fields" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 16, marginBottom: 24, alignItems: "end" }}>
+            <StopPicker label="FROM" placeholder="Departure stop, e.g. Centrum" value={from} onChange={setFrom} color="#1e88e5" onSubmit={findRoutes} />
+            <button
+              type="button"
+              className="swap-stops"
+              onClick={swapStops}
+              disabled={!from || !to}
+              aria-label="Swap departure and destination"
+              title="Swap departure and destination"
+              style={{ marginBottom: 6, width: 48, height: 48, borderRadius: 999, border: "3px solid #e3f2fd", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: !from || !to ? "default" : "pointer", opacity: !from || !to ? 0.4 : 1 }}
+            >
+              <ArrowLeftRight size={22} color="#42a5f5" strokeWidth={3} />
+            </button>
+            <StopPicker label="TO" placeholder="Destination stop, e.g. Wilanów" value={to} onChange={setTo} color="#43a047" onSubmit={findRoutes} />
           </div>
 
           <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-            {[{ label: "Direct only", checked: direct, onChange: setDirect }, { label: "With transfer", checked: withTransfer, onChange: setWithTransfer }, { label: "Ignore time", checked: ignoreTime, onChange: setIgnoreTime }].map((opt, i) => (
+            {[{ label: "With transfer", checked: withTransfer, onChange: setWithTransfer }, { label: "Ignore time", checked: ignoreTime, onChange: setIgnoreTime }].map((opt, i) => (
               <label key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 20px", background: opt.checked ? "linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)" : "#f5f5f5", border: `3px solid ${opt.checked ? "#42a5f5" : "#e0e0e0"}`, borderRadius: 12, cursor: "pointer", fontSize: 15, fontWeight: 600, flex: 1, minWidth: 150 }}>
                 <input type="checkbox" checked={opt.checked} onChange={(e) => opt.onChange(e.target.checked)} style={{ width: 20, height: 20, cursor: "pointer" }} />
                 {opt.label}
@@ -204,7 +208,7 @@ export default function Home() {
             ))}
           </div>
 
-          <button onClick={runSearch} style={{ width: "100%", padding: "20px", background: "linear-gradient(135deg, #42a5f5 0%, #1e88e5 100%)", color: "#fff", border: "none", borderRadius: 16, fontSize: 18, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 24px rgba(66, 165, 245, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <button onClick={findRoutes} disabled={loading} style={{ width: "100%", padding: "20px", background: "linear-gradient(135deg, #42a5f5 0%, #1e88e5 100%)", color: "#fff", border: "none", borderRadius: 16, fontSize: 18, fontWeight: 700, cursor: loading ? "wait" : "pointer", boxShadow: "0 8px 24px rgba(66, 165, 245, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
             <Search size={22} />
             FIND MY ROUTE
           </button>
@@ -229,101 +233,38 @@ export default function Home() {
           </div>
         )}
 
-        {resp && (
+        {searched && Array.isArray(pairRoutes) && (
           <div style={{ background: "rgba(255, 255, 255, 0.95)", borderRadius: 24, padding: 40, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", marginTop: 24, border: "2px solid rgba(66, 165, 245, 0.3)" }}>
-            <div style={{ marginBottom: 24, padding: 20, background: "#f8fafc", borderRadius: 12, border: "2px solid #e2e8f0" }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "#334155", marginBottom: 8 }}>
-                Query: <span style={{ color: "#42a5f5" }}>{resp.query}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 240, fontSize: 20, fontWeight: 800, color: "#0d47a1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <MapPin size={22} color="#1e88e5" />
+                {searched.from.name}
+                <span style={{ color: "#42a5f5" }}>→</span>
+                <MapPin size={22} color="#43a047" />
+                {searched.to.name}
               </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 20, marginBottom: 24 }}>
-              <div style={{ flex: 1, padding: 20, background: "#f0f9ff", borderRadius: 12, border: "2px solid #bae6fd" }}>
-                <h4 style={{ fontSize: 15, fontWeight: 700, color: "#0369a1", marginBottom: 12 }}>From Candidates</h4>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                  {(resp.fromCandidates ?? []).map((c: any) => (
-                    <li key={`f-${c.id}`} style={{ padding: "6px 0", fontSize: 14, color: "#0c4a6e" }}>
-                      • {c.nazwa}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div style={{ flex: 1, padding: 20, background: "#f0fdf4", borderRadius: 12, border: "2px solid #bbf7d0" }}>
-                <h4 style={{ fontSize: 15, fontWeight: 700, color: "#15803d", marginBottom: 12 }}>To Candidates</h4>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                  {(resp.toCandidates ?? []).map((c: any) => (
-                    <li key={`t-${c.id}`} style={{ padding: "6px 0", fontSize: 14, color: "#14532d" }}>
-                      • {c.nazwa}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {Array.isArray(resp.directPairs) && resp.directPairs.length > 0 && (
-              <div style={{ marginBottom: 24, padding: 20, background: "#fef3c7", borderRadius: 12, border: "2px solid #fde68a" }}>
-                <h4 style={{ fontSize: 15, fontWeight: 700, color: "#92400e", marginBottom: 12 }}>Direct Pairs Found</h4>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                  {resp.directPairs.map((p: any, idx: number) => (
-                    <li key={`pair-${idx}`} style={{ padding: "6px 0", fontSize: 14, color: "#78350f" }}>
-                      • {p.fromName} → {p.toName} ({Array.isArray(p.routes) ? p.routes.length : 0} routes)
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 20, marginBottom: 32, alignItems: "end" }}>
-              <div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700, color: "#1565c0", marginBottom: 12 }}>
-                  <MapPin size={20} color="#1565c0" />
-                  FROM
-                </label>
-                <select value={fromId ?? ""} onChange={(e) => setFromId(Number(e.target.value))} style={{ width: "100%", padding: "16px 20px", border: "3px solid #e3f2fd", borderRadius: 12, fontSize: 16, fontWeight: 500, cursor: "pointer", background: "#fafafa" }}>
-                  <option value="" disabled>Select departure</option>
-                  {(resp.fromCandidates ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.nazwa}</option>)}
-                </select>
-              </div>
-              
-              <div style={{ paddingBottom: 16 }}>
-                <ArrowRight size={32} color="#42a5f5" strokeWidth={3} />
-              </div>
-
-              <div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700, color: "#1565c0", marginBottom: 12 }}>
-                  <MapPin size={20} color="#1565c0" />
-                  TO
-                </label>
-                <select value={toId ?? ""} onChange={(e) => setToId(Number(e.target.value))} style={{ width: "100%", padding: "16px 20px", border: "3px solid #e3f2fd", borderRadius: 12, fontSize: 16, fontWeight: 500, cursor: "pointer", background: "#fafafa" }}>
-                  <option value="" disabled>Select destination</option>
-                  {(resp.toCandidates ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.nazwa}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 16, marginBottom: 40 }}>
-              <button onClick={runDirectForPair} style={{ flex: 1, padding: "18px 24px", background: "linear-gradient(135deg, #42a5f5 0%, #1e88e5 100%)", color: "#fff", border: "none", borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 20px rgba(66, 165, 245, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                <Train size={20} />
-                {withTransfer ? "FIND WITH TRANSFER" : "FIND DIRECT"}
-              </button>
-              <button onClick={addToFavorites} disabled={savingFav || !fromId || !toId} style={{ padding: "18px 32px", background: savingFav || !fromId || !toId ? "#bdbdbd" : "linear-gradient(135deg, #ffd54f 0%, #ffb300 100%)", color: savingFav || !fromId || !toId ? "#757575" : "#f57f17", border: "none", borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: savingFav || !fromId || !toId ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-                <Star size={20} fill={savingFav || !fromId || !toId ? "none" : "#f57f17"} />
+              <Link href={`/map?from=${searched.from.id}&to=${searched.to.id}`} style={{ padding: "14px 22px", background: "linear-gradient(135deg, #66bb6a 0%, #43a047 100%)", color: "#fff", borderRadius: 14, fontSize: 15, fontWeight: 700, textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
+                <MapIcon size={18} />
+                SHOW ON MAP
+              </Link>
+              <button onClick={addToFavorites} disabled={savingFav} style={{ padding: "14px 22px", background: savingFav ? "#bdbdbd" : "linear-gradient(135deg, #ffd54f 0%, #ffb300 100%)", color: savingFav ? "#757575" : "#f57f17", border: "none", borderRadius: 14, fontSize: 15, fontWeight: 700, cursor: savingFav ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                <Star size={18} fill={savingFav ? "none" : "#f57f17"} />
                 {savingFav ? "SAVING..." : "FAVOURITE"}
               </button>
             </div>
 
-            {Array.isArray(pairRoutes) && <LiveDepartures fromId={fromId} toId={toId} />}
+            <LiveDepartures fromId={searched.from.id} toId={searched.to.id} />
 
             {Array.isArray(pairRoutes) && pairRoutes.length > 0 && (
               <div>
                 <h3 style={{ fontSize: 24, fontWeight: 800, marginBottom: 20, color: "#0d47a1", display: "flex", alignItems: "center", gap: 12 }}>
                   <Train size={28} color="#42a5f5" />
-                  {withTransfer ? "ROUTES WITH TRANSFER" : "DIRECT ROUTES"}
+                  {searched.transfer ? "ROUTES WITH TRANSFER" : "DIRECT ROUTES"}
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   {pairRoutes.map((r: any, idx: number) => (
                     <div key={idx} style={{ padding: 24, background: "linear-gradient(135deg, #fff9c4 0%, #fff59d 100%)", borderRadius: 16, border: "3px solid #fbc02d", boxShadow: "0 4px 12px rgba(251, 192, 45, 0.3)" }}>
-                      {withTransfer ? (
+                      {searched.transfer ? (
                         <div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                             <Train size={22} color="#f57f17" />
